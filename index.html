@@ -269,7 +269,7 @@ function newChart(){
     coding:{problems:'',tests:0,notes:0,historian:false,interp:false,discuss:false,risk:'',ccMin:0,auto:false,locked:false,why:{},manual:{}}};
 }
 function migrate(c){const n=newChart();for(const k in n){if(c[k]===undefined)c[k]=n[k];else if(n[k]&&typeof n[k]==='object'&&!Array.isArray(n[k]))for(const j in n[k])if(c[k][j]===undefined)c[k][j]=n[k][j]}return c}
-charts=charts.map(migrate);
+charts=charts.map(migrate);charts.forEach(c=>{if(c.tab==='dispo')c.tab='mdm';['impression','consults','followup','precautions','notes'].forEach(k=>c.dispo[k]='')});
 function purgeOld(){
   const h=+settings.purgeHours;if(!h)return;
   const cut=Date.now()-h*3600e3,n=charts.length;charts=charts.filter(c=>c.created>=cut);
@@ -375,7 +375,7 @@ function attestText(c){
   if(main)out.push(main);
   if(a.additions.trim())out.push('Additions/exceptions: '+a.additions.trim().replace(/\s*$/,'').replace(/([^.!?])$/,'$1.'));
   if(a.procOn&&(c.procs||[]).length){
-    const ecg=c.procs.some(p=>p.type==='ECG interpretation'),pr=uniq(c.procs.filter(p=>p.type!=='ECG interpretation').map(p=>p.type.replace(/ \(.*\)$/,'').toLowerCase()));
+    const ecg=c.procs.some(p=>p.type==='ECG interpretation'),pr=uniq(c.procs.filter(p=>p.type!=='ECG interpretation'&&p.type!=='Critical care').map(p=>p.type.replace(/ \(.*\)$/,'').toLowerCase()));
     if(pr.length)out.push(`I was present for ${a.presence==='entire'?'the entire procedure':'the key and critical portions of the procedure and immediately available for the remainder'}: ${pr.join(', ')}.`);
     if(ecg)out.push('I personally reviewed the ECG and agree with the interpretation as documented.');
   }
@@ -469,6 +469,7 @@ function peText(c){
   return out.join('\n');
 }
 const PROC_TEMPLATES={
+ 'Critical care':'PROCEDURE: Critical care\nCritical care time: [minutes] minutes, exclusive of separately billable procedures\nCritical condition: [sepsis / septic shock / acute respiratory failure / cardiac arrest / shock / STEMI / stroke / DKA / GI hemorrhage / status epilepticus / multisystem trauma / other]\nOrgan system(s) at risk: [cardiovascular / respiratory / neurologic / renal / hepatic / metabolic / multiple]\nInterventions: [e.g., vasopressors, BiPAP, IV fluids, blood products, frequent reassessment]\nStatement: The patient had a high probability of imminent or life-threatening deterioration. Critical care was required to assess, manipulate, and support vital organ system function. This time excludes separately billable procedures.',
  'ECG interpretation':'PROCEDURE: ECG interpretation (interpreted by me)\nIndication: [chest pain / syncope / palpitations / dyspnea / weakness / other]\nRate: [rate] bpm\nRhythm: [=normal sinus rhythm]\nAxis: [=normal]\nIntervals: |PR [ms] ms|, QRS [ms] ms|, QTc [ms] ms\nST segments: [=no ST elevation or depression]\nT waves: [=no acute T-wave changes]\nComparison: [no prior available / unchanged from prior / changed from prior]\nImpression: [impression]',
  'Laceration repair':'PROCEDURE: Laceration repair\nIndication: |[length] cm |laceration| to the [location]\nConsent: Risks, benefits, and alternatives discussed; verbal consent obtained.\nTime-out: Performed.\nAnesthesia: |[=1% lidocaine] |local infiltration|, [mL] mL|.\n!Preparation: Wound irrigated| with [mL] mL normal saline| and explored; no foreign body, tendon, or vascular involvement identified.\nRepair: |[simple / intermediate / complex] |repair| with [number] sutures| (suture: [size/type, e.g., 4-0 nylon])|.\nDressing: [=antibiotic ointment and dry dressing].\nComplications: None. The patient tolerated the procedure well.',
  'Incision and drainage':'PROCEDURE: Incision and drainage\nIndication: Abscess| to the [location]|, approximately [size] cm\nConsent: Risks, benefits, and alternatives discussed; verbal consent obtained.\nTime-out: Performed.\nAnesthesia: |[=1% lidocaine] |local infiltration.\n!Procedure: Area prepped in usual fashion. Incision| of [length] cm| made. Purulent material expressed| ([small / moderate / large] amount)|. Loculations broken up with hemostat. Cavity irrigated.| [packing placed / no packing placed]|.\nComplications: None. The patient tolerated the procedure well.',
@@ -481,6 +482,7 @@ const PROC_TEMPLATES={
  'Point-of-care ultrasound (POCUS)':'PROCEDURE: Point-of-care ultrasound\nIndication: [indication]\nExam: |[FAST / cardiac / lung / aorta / renal / biliary / DVT / pelvic / soft tissue] |ultrasound, performed and interpreted by me.\nFindings: [findings]\nImpression: [impression]\nImages: [saved / not saved].'
 };
 const BLANK_PROC='PROCEDURE: [procedure name]\nIndication: [indication]\nConsent: [consent]\nDetails: [details]\nComplications: [=None].';
+function syncCC(c){c.coding.ccMin=(c.procs||[]).filter(p=>p.type==='Critical care').reduce((t,p)=>t+(parseInt(p.vals&&p.vals[0])||0),0);refreshLevel()}
 function procFields(tpl){const f=[];tpl.replace(/\[([^\]]*)\]/g,(m,h)=>{f.push(h)});return f}
 function procInit(tpl){return procFields(tpl).map(h=>h.startsWith('=')?h.slice(1):'')}
 function procText(p){
@@ -899,28 +901,6 @@ function writeMDM(c){
     if(c.dispo.sdm)RB.push('Shared decision-making: the diagnostic and disposition options, including their risks and benefits, were discussed with the patient'+(/family|wife|husband|mother|father|daughter|son|parent/i.test(c.dispo.notes)?' and family':'')+', who verbalized understanding and agreement with the plan.');
     if(RB.length)S.push('RISKS, BENEFITS, AND SHARED DECISION MAKING:\n'+RB.join('\n'));
   }
-  // 7 Disposition
-  const dp=c.dispo, DT={discharge:'discharged home',obs:'placed in observation',admit:'admitted',icu:'admitted to the ICU',transfer:'transferred to a higher level of care',or:'taken to the operating room',ama:'left against medical advice',lwbs:'left before evaluation was completed',expired:'expired in the ED'};
-  if(dp.type){
-    const X=[];
-    X.push(`The patient was ${DT[dp.type]}${dp.condition?' in '+dp.condition.toLowerCase()+' condition':''}.`);
-    if(dp.notes.trim())X.push(dp.notes.trim().split(/\n+/).map(sentence).join(' '));
-    if(dp.consults)X.push(`Consultation/accepting: ${sentence(dp.consults)}`);
-    if(dp.followup)X.push(`Follow-up: ${sentence(dp.followup)}`);
-    if(dp.precautions)X.push(`Strict return precautions were given, including ${lc(dp.precautions.replace(/\.$/,''))}.`);
-    if(dp.type==='discharge'&&!dp.precautions)gaps.push('Discharge without documented return precautions.');
-    if(dp.type==='discharge'&&!dp.followup)gaps.push('Discharge without documented follow-up.');
-    if(dp.type==='ama'){X.push('[Document decision-making capacity, specific risks explained including death/disability, alternatives offered, and that the patient may return at any time.]');gaps.push('AMA: document capacity assessment and the specific risks discussed.')}
-    if(['admit','icu','obs','transfer'].includes(dp.type)&&!dp.consults)gaps.push('Admission/transfer without the accepting physician documented.');
-    S.push('DISPOSITION AND RATIONALE:\n'+X.join(' '));
-  }else{
-    const pend=c.status==='awaiting'?' Awaiting results.':'';
-    S.push('DISPOSITION AND RATIONALE:\nDisposition pending further evaluation and results.'+pend);
-  }
-  // 8 Impression
-  if(dp.impression.trim())S.push('CLINICAL IMPRESSION:\n'+dp.impression.split(/[\n;]+/).map(x=>x.trim()).filter(Boolean).map((x,i)=>`${i+1}. ${x.charAt(0).toUpperCase()+x.slice(1)}`).join('\n'));
-  else gaps.push('Clinical impression / diagnosis is blank (Disposition section).');
-  if(+c.coding.ccMin>=30)S.push(`CRITICAL CARE:\n${c.coding.ccMin} minutes of critical care time were provided, exclusive of separately billable procedures, for a condition with a high probability of imminent or life-threatening deterioration.`);
   return{text:S.join('\n\n'),gaps};
 }
 
@@ -974,7 +954,7 @@ function parseJSON(txt){
    ===================================================================== */
 const MIC='<svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
 const ta=(id,field,cls,ph)=>`<div class="taw"><textarea id="${id}" class="${cls||''}" data-f="${field}" placeholder="${esc(ph||'')}"></textarea><button class="mic" data-mic="${id}" title="Dictate (Alt+D)">${MIC}</button></div><div class="interim" data-interim="${id}"></div>`;
-const TABS=[['hpi','HPI'],['ros','ROS'],['pe','Physical Exam'],['results','Results'],['course','ED Course'],['rules','Decision Rules'],['dispo','Disposition'],['mdm','MDM'],['procs','Procedures'],['attest','Attestation'],['billing','Billing']];
+const TABS=[['hpi','HPI'],['ros','ROS'],['pe','Physical Exam'],['results','Results'],['course','ED Course'],['rules','Decision Rules'],['mdm','MDM'],['procs','Procedures'],['attest','Attestation'],['billing','Billing']];
 function tabCount(c,t){return t==='results'?c.results.length+Object.values(c.labs||{}).filter(x=>x.on).length:t==='course'?c.course.length:t==='procs'?c.procs.length:t==='rules'?Object.values(c.rules).filter(r=>r.on).length:0}
 
 function renderPtTabs(){
@@ -1057,18 +1037,11 @@ function renderTab(){
       ${ta('t_course','_course','','e.g., "Gave aspirin 324 and one nitro, pain went from 6 to 2. Pulses equal, so I am less worried about dissection."')}
       <div class="row end"><button class="tb primary" id="btnAddCourse">Add to ED course</button></div><div class="entries" id="courseList"></div>`;break;
   case 'rules':h=`<div class="hint" style="margin-bottom:6px">Suggested from the presentation. Tick the criteria; the score and its interpretation go into the MDM.</div><div id="rulesBox"></div>`;break;
-  case 'dispo':h=`<div class="grid3"><div class="fld"><label>Disposition</label><select data-f="dispo.type"><option value="">Not decided</option><option value="discharge">Discharge</option><option value="obs">Observation</option><option value="admit">Admit (floor/tele)</option><option value="icu">Admit ICU</option><option value="transfer">Transfer</option><option value="or">To OR</option><option value="ama">AMA</option><option value="lwbs">Eloped/LWBS</option><option value="expired">Expired</option></select></div>
-      <div class="fld"><label>Condition</label><select data-f="dispo.condition"><option value=""></option><option>Stable</option><option>Improved</option><option>Fair</option><option>Guarded</option><option>Critical</option></select></div>
-      <div class="fld"><label>Critical care time (min, excluding procedures)</label><input type="number" min="0" data-f="coding.ccMin" data-type="num"></div></div>
-      <div class="fld" style="margin-top:10px"><label>Clinical impression / diagnoses (separate with ; )</label><input data-f="dispo.impression" placeholder="e.g., Chest pain, low risk; GERD"></div>
-      <div class="grid2" style="margin-top:10px"><div class="fld"><label>Consultants / accepting physician</label><input data-f="dispo.consults"></div><div class="fld"><label>Follow-up</label><input data-f="dispo.followup" placeholder="e.g., PCP in 2–3 days"></div></div>
-      <div class="fld" style="margin-top:10px"><label>Return precautions</label><input data-f="dispo.precautions" placeholder="e.g., worsening chest pain, shortness of breath, syncope"></div>
-      <div class="row" style="margin-top:8px;gap:20px"><label class="chk"><input type="checkbox" data-f="dispo.sdm" data-type="bool"> Shared decision-making with patient/family</label><label class="chk"><input type="checkbox" data-f="dispo.considered" data-type="bool"> Considered admission/observation (for discharges)</label></div>
-      <div style="margin-top:8px">${ta('t_dispo','dispo.notes','','Disposition reasoning, e.g., "Patient prefers outpatient workup, understands the risks, has reliable follow-up."')}</div>`;break;
   case 'mdm':h=`<div class="sec"><h4>Differential</h4><div id="ddxBox"></div></div>
       <div class="grid3"><div class="fld"><label>Decision rules</label><select data-f="opts.rules"><option value="auto">Auto (if applicable)</option><option value="include">Always include</option><option value="omit">Omit</option></select></div>
       <div class="fld"><label>Risk stratification</label><select data-f="opts.strat"><option value="auto">Auto (if applicable)</option><option value="include">Always include</option><option value="omit">Omit</option></select></div>
       <div class="fld"><label>Risks / benefits / SDM</label><select data-f="opts.rb"><option value="auto">Auto (if applicable)</option><option value="include">Always include</option><option value="omit">Omit</option></select></div></div>
+      <div class="row" style="margin-top:10px;gap:14px"><div class="fld" style="width:240px"><label>Disposition decision (for MDM risk/billing only)</label><select data-f="dispo.type"><option value="">Not decided</option><option value="discharge">Discharge</option><option value="obs">Observation</option><option value="admit">Admit (floor/tele)</option><option value="icu">Admit ICU</option><option value="transfer">Transfer</option><option value="or">To OR</option></select></div><label class="chk" style="margin-top:16px"><input type="checkbox" data-f="dispo.considered" data-type="bool"> Considered admission/observation</label><label class="chk" style="margin-top:16px"><input type="checkbox" data-f="dispo.sdm" data-type="bool"> Shared decision-making</label></div>
       <div style="margin-top:10px">${ta('t_assess','assessment','','Optional: your assessment in your own words, e.g., "Low suspicion for PE given PERC negative; most consistent with musculoskeletal pain."')}</div>
       <div class="row" style="margin:4px 0 10px"><button class="tb primary" id="btnGen">⚡ Generate MDM</button><span class="hint">${c.genAt?`Last generated ${tfmt(c.genAt)}${c.src==='gpt'?' (ChatGPT)':''}`:'Runs in this page with no key and no internet. Generate again when new results arrive.'}</span><div class="spacer"></div><button class="tb" id="btnCopyMdm">Copy MDM</button></div>
       <textarea class="mdm" data-f="mdm" placeholder="Your MDM will appear here. Edit freely."></textarea><div id="gapsBox"></div>
@@ -1210,7 +1183,7 @@ let profT=null;
 document.addEventListener('input',e=>{
   const el=e.target,c=active();if(!c)return;
   if(el.dataset.rv){const id=el.dataset.rv,i=+el.dataset.i,r=c.rules[id];r.v=r.v||[];r.v[i]=el.type==='checkbox'?el.checked:(el.value===''?null:+el.value);save();const res=evalRule(id,r.v),rr=$('#rr_'+id);rr.textContent=res.text;rr.className='rres '+(res.done?res.cls:'');schedulePreview();return}
-  if(el.dataset.pv){const p=c.procs.find(x=>x.id===el.dataset.pv);if(p){p.vals[+el.dataset.i]=el.value;p.text=procText(p);el.classList.toggle('filled',!!el.value.trim());el.style.width=Math.max(8,Math.min(60,Math.max(el.value.length,el.placeholder.length)+2))+'ch';const e2=p.vals.filter(v=>!String(v||'').trim()).length,pc=$('#pcnt_'+p.id);if(pc)pc.textContent=e2?`${e2} box${e2>1?'es':''} empty (left out of the note)`:'All boxes filled ✓';save();schedulePreview()}return}
+  if(el.dataset.pv){const p=c.procs.find(x=>x.id===el.dataset.pv);if(p){p.vals[+el.dataset.i]=el.value;if(p.type==='Critical care')syncCC(c);p.text=procText(p);el.classList.toggle('filled',!!el.value.trim());el.style.width=Math.max(8,Math.min(60,Math.max(el.value.length,el.placeholder.length)+2))+'ch';const e2=p.vals.filter(v=>!String(v||'').trim()).length,pc=$('#pcnt_'+p.id);if(pc)pc.textContent=e2?`${e2} box${e2>1?'es':''} empty (left out of the note)`:'All boxes filled ✓';save();schedulePreview()}return}
   if(el.dataset.pextra){const p=c.procs.find(x=>x.id===el.dataset.pextra);if(p){p.extra=el.value;p.text=procText(p);save();schedulePreview()}return}
   if(el.dataset.proc){const p=c.procs.find(x=>x.id===el.dataset.proc);if(p){p.text=el.value;save();schedulePreview()}return}
   if(el.dataset.labval){const [pn,n]=el.dataset.labval.split('|');c.labs[pn].v[n]=el.value;save();schedulePreview();return}
@@ -1257,7 +1230,7 @@ $('#builder').addEventListener('click',e=>{
   if(ds.ruleoff){delete c.rules[ds.ruleoff];save();renderRules();renderTabs();return}
   if(ds.delres){ask('Remove this result entry?',()=>{c.results=c.results.filter(r=>r.id!==ds.delres);save();renderEntries();renderTabs();refreshLevel();schedulePreview()});return}
   if(ds.delcourse){ask('Remove this ED course entry?',()=>{c.course=c.course.filter(r=>r.id!==ds.delcourse);save();renderEntries();renderTabs()});return}
-  if(ds.delproc){ask('Remove this procedure note?',()=>{c.procs=c.procs.filter(p=>p.id!==ds.delproc);save();renderProcs();renderTabs();schedulePreview()});return}
+  if(ds.delproc){ask('Remove this procedure note?',()=>{c.procs=c.procs.filter(p=>p.id!==ds.delproc);syncCC(c);save();renderProcs();renderTabs();schedulePreview()});return}
   switch(t.id){
     case 'rosAllNeg':c.ros.allNeg=!c.ros.allNeg;save();renderTab();schedulePreview();break;
     case 'rosClear':ask('Clear the entire ROS?',()=>{c.ros={items:{},sysNeg:{},allNeg:false,reason:'',comment:''};save();renderTab();schedulePreview();});break;
