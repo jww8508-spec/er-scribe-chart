@@ -259,7 +259,7 @@ function setPath(o,p,v){const ks=p.split('.');let a=o;for(let i=0;i<ks.length-1;
 function newChart(){
   return {id:uid(),created:Date.now(),room:'',age:'',sex:'',guTemplate:'',cc:'',status:'active',tab:'hpi',
     attest:{on:false,type:'saw',resident:'',attending:'',custom:'',additions:'',procOn:true,presence:'entire',ccOn:false,ccMin:0},hpi:'',historian:'',labs:{},labsReviewed:false,pmh:[],pmhNone:false,results:[],course:[],assessment:'',procs:[],
-    vitals:{bp:'',hr:'',rr:'',temp:'',tempUnit:'F',spo2:'',pain:''},
+    vitals:{bp:'',hr:'',rr:'',temp:'',tempUnit:'C',tempEntryVersion:2,spo2:'',pain:''},
     ros:{items:{},sysNeg:{},allNeg:false,reason:'',comment:''},
     pe:{f:{},details:{},abnormalDetails:{},headSplit:true,comment:''},
     profiles:[],profAuto:true,ddxOff:[],ddxAdd:[],rules:{},
@@ -268,7 +268,12 @@ function newChart(){
     mdm:'',mdmGen:'',gaps:[],genAt:null,src:'',
     coding:{problems:'',tests:0,notes:0,historian:false,interp:false,discuss:false,risk:'',ccMin:0,auto:false,locked:false,why:{},manual:{}}};
 }
-function migrate(c){const n=newChart();if(c.pe&&c.pe.headSplit===undefined)c.pe.headSplit=false;for(const k in n){if(c[k]===undefined)c[k]=n[k];else if(n[k]&&typeof n[k]==='object'&&!Array.isArray(n[k]))for(const j in n[k])if(c[k][j]===undefined)c[k][j]=n[k][j]}migrateExamDetails(c.pe);return c}
+function migrate(c){
+  const n=newChart();
+  if(c.vitals&&c.vitals.tempEntryVersion===undefined){
+    c.vitals.tempUnit=String(c.vitals.temp??'').trim()?(c.vitals.tempUnit||'F'):'C';
+  }
+  if(c.pe&&c.pe.headSplit===undefined)c.pe.headSplit=false;for(const k in n){if(c[k]===undefined)c[k]=n[k];else if(n[k]&&typeof n[k]==='object'&&!Array.isArray(n[k]))for(const j in n[k])if(c[k][j]===undefined)c[k][j]=n[k][j]}migrateExamDetails(c.pe);return c}
 function purgeOld(){
   const h=+settings.purgeHours;if(!h)return;
   const cut=Date.now()-h*3600e3,n=charts.length;charts=charts.filter(c=>c.created>=cut);
@@ -540,7 +545,7 @@ function temperatureText(value,unit){
   const text=String(value??'').trim();
   const match=text.match(/^(-?\d+(?:\.\d+)?|-?\.\d+)\s*(?:°\s*)?(c(?:elsius)?|f(?:ahrenheit)?)?$/i);
   if(!match)return text;
-  const scale=(match[2]||unit||'F').charAt(0).toUpperCase();
+  const scale=(match[2]||unit||'C').charAt(0).toUpperCase();
   if(scale==='C')return (Number(match[1])*9/5+32).toFixed(1)+' °F';
   return match[1]+' °F';
 }
@@ -1280,7 +1285,7 @@ function peHTML(c){
      </select></label>`:''}
      ${rows.map(({finding:it,index:i})=>{const k=s+'|'+i,val=f[k],cls=val==='n'?'nrm':val==='a'?'abn':'';return `<div class="ri ${cls}" title="${esc(val==='a'?it[2]:it[1])}"><div class="lab" data-pe="${esc(k)}" data-v="n"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(it[0])}</div><button class="mn" data-pe="${esc(k)}" data-v="a" title="Abnormal">✗</button></div>${val==='a'?`<label class="fld">Abnormal finding details<textarea rows="2" id="pe_abnormal_${esc(k)}" data-f="pe.abnormalDetails.${esc(k)}" aria-label="${esc(s+' — '+it[0]+' details')}"></textarea></label>`:''}`;}).join('')}
      <label class="fld" style="margin-top:6px">Additional findings<textarea rows="2" data-f="pe.details.${esc(s)}" aria-label="${esc(s+' — Additional findings')}"></textarea></label></div>`}).join('');
-  return `<div class="sec"><h4>Vitals</h4><div class="grid6">${[['bp','BP','128/76'],['hr','HR','88'],['rr','RR','16'],['temp','Temp','98.6 or 37 C'],['spo2','SpO2 %','98'],['pain','Pain /10','6']].map(([k,l,p])=>`<div class="fld"><label>${l}</label><input data-f="vitals.${k}" placeholder="${p}" ${k==='temp'?'aria-label="Temperature"':''}>${k==='temp'?'<select aria-label="Temperature unit" data-f="vitals.tempUnit"><option value="F">°F</option><option value="C">°C</option></select>':''}</div>`).join('')}</div></div>
+  return `<div class="sec"><h4>Vitals</h4><div class="grid6">${[['bp','BP','128/76'],['hr','HR','88'],['rr','RR','16'],['temp','Temp','38.6'],['spo2','SpO2 %','98'],['pain','Pain /10','6']].map(([k,l,p])=>`<div class="fld"><label>${l}</label><input data-f="vitals.${k}" placeholder="${p}" ${k==='temp'?'aria-label="Temperature"':''}>${k==='temp'?`<select aria-label="Temperature unit" data-f="vitals.tempUnit"><option value="C">°C</option><option value="F">°F</option></select><span class="hint" id="tempFahrenheit" aria-live="polite">${esc(temperatureText(v.temp,v.tempUnit))}</span>`:''}</div>`).join('')}</div></div>
     <div class="row" style="margin-bottom:10px"><button class="tb" id="peAllNormal">Normal exam (all unmarked items except GU)</button><button class="tb" id="peClear">Clear exam</button><span class="hint">Exam template: ${AGE_GROUPS[ageGroup(c)]||'General'}</span><div class="spacer"></div>
     <div class="legendrow"><span><span class="sw" style="background:var(--nrm);border-color:var(--nrmb)"></span>Click name = normal</span><span><span class="sw" style="background:var(--abn);border-color:var(--abnb)"></span>Click ✗ = abnormal</span></div></div>
     <div class="gridsys">${sys}</div>
@@ -1402,6 +1407,10 @@ document.addEventListener('input',e=>{
   const f=el.dataset?.f;if(!f||f.startsWith('_'))return;
   let v=el.type==='checkbox'?el.checked:el.value;if(el.dataset.type==='num')v=Math.max(0,+v||0);
   setPath(c,f,v);
+  if(f==='vitals.temp'||f==='vitals.tempUnit'){
+    const output=$('#tempFahrenheit');
+    if(output)output.textContent=temperatureText(c.vitals.temp,c.vitals.tempUnit);
+  }
   if(f.startsWith('coding.')&&CODE_KEYS.includes(f.slice(7))){c.coding.manual=c.coding.manual||{};c.coding.manual[f.slice(7)]=true;if(c.tab==='billing')setTimeout(renderBillingDetail,0)}
   save();schedulePreview();
   if(['age','sex','cc','status'].includes(f))renderPtTabs();
