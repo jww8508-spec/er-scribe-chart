@@ -436,8 +436,9 @@ const PE={
  'Cardiovascular':[['Rate','Normal rate','Abnormal rate'],['Rhythm','Regular rhythm','Irregular rhythm'],['Heart sounds','Normal heart sounds, no murmur','Murmur / abnormal heart sounds'],['Pulses','Distal pulses 2+ and symmetric','Diminished or asymmetric pulses']],
  'Pulmonary':[['Effort','Normal respiratory effort','Increased work of breathing'],['Breath sounds','Clear to auscultation bilaterally','Abnormal breath sounds'],['Adventitious','No wheezes, rales, or rhonchi','Wheezes / rales / rhonchi']],
  'Abdominal':[['Palpation','Soft, nontender','Tenderness to palpation'],['Distension','Nondistended','Distended'],['Peritoneal signs','No guarding or rebound','Guarding / rebound']],
+ 'Genitourinary (GU)':[['CVA tenderness','No CVA tenderness','CVA tenderness'],['External genitalia','External genitalia without visible abnormality','External genital abnormality'],['Genital tenderness','No genital tenderness','Genital tenderness'],['Discharge','No abnormal genital discharge','Abnormal genital discharge']],
  'Musculoskeletal':[['Range of motion','Normal range of motion','Limited range of motion'],['Deformity','No deformity','Deformity'],['Edema','No lower extremity edema','Lower extremity edema']],
- 'Skin':[['Temperature','Warm and dry','Cool / clammy'],['Rash','No rash','Rash'],['Color','Normal color','Pallor / cyanosis / jaundice']],
+ 'Skin':[['Temperature','Warm and dry','Cool / clammy'],['Rash','No rash','Rash'],['Color','Normal color','Pallor / cyanosis / jaundice'],['Abscess','No abscess','Abscess']],
  'Neurological':[['Mental status','Alert and oriented x4','Altered mental status'],['Cranial nerves','Cranial nerves II–XII grossly intact','Cranial nerve deficit'],['Motor','Strength 5/5 and symmetric','Focal weakness'],['Sensation','Sensation intact','Sensory deficit'],['Speech','Speech normal','Speech abnormal'],['Coordination','Normal finger-to-nose','Dysmetria / ataxia']],
  'Psychiatric':[['Mood','Normal mood','Abnormal mood'],['Behavior','Behavior appropriate','Agitated / abnormal behavior'],['Affect','Normal affect','Abnormal affect (flat / blunted / labile / anxious)'],['Depression','No signs of depression','Depressed'],['Suicidal ideation','Denies suicidal ideation','Endorses suicidal ideation'],['Homicidal ideation','Denies homicidal ideation','Endorses homicidal ideation']]
 };
@@ -1135,7 +1136,7 @@ function peHTML(c){
   const sys=Object.keys(PE).map(s=>{const allN=PE[s].every((_,i)=>f[s+'|'+i]==='n');return `<div class="sys"><div class="sh"><b>${esc(s)}</b><label><input type="checkbox" data-pesys="${esc(s)}" ${allN?'checked':''}>nml</label></div>
      ${PE[s].map((it,i)=>{const k=s+'|'+i,val=f[k],cls=val==='n'?'nrm':val==='a'?'abn':'';return `<div class="ri ${cls}" title="${esc(val==='a'?it[2]:it[1])}"><div class="lab" data-pe="${esc(k)}" data-v="n"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(it[0])}</div><button class="mn" data-pe="${esc(k)}" data-v="a" title="Abnormal">✗</button></div>${val==='a'?`<input class="pedet" data-pedet="${esc(k)}" value="${esc(f[k+'|d']||'')}" placeholder="Describe: ${esc(it[2].toLowerCase())}" style="width:100%;margin:-1px 0 4px;border:1px solid var(--abnb);border-radius:4px;padding:3px 6px;font-size:12px">`:''}`}).join('')}</div>`}).join('');
   return `<div class="sec"><h4>Vitals</h4><div class="grid6">${[['bp','BP','128/76'],['hr','HR','88'],['rr','RR','16'],['temp','Temp','98.6 F'],['spo2','SpO2 %','98'],['pain','Pain /10','6']].map(([k,l,p])=>`<div class="fld"><label>${l}</label><input data-f="vitals.${k}" placeholder="${p}"></div>`).join('')}</div></div>
-    <div class="row" style="margin-bottom:10px"><button class="tb" id="peAllNormal">Normal exam (all unmarked items)</button><button class="tb" id="peClear">Clear exam</button><div class="spacer"></div>
+    <div class="row" style="margin-bottom:10px"><button class="tb" id="peAllNormal">Normal exam (all unmarked items except GU)</button><button class="tb" id="peClear">Clear exam</button><div class="spacer"></div>
     <div class="legendrow"><span><span class="sw" style="background:var(--nrm);border-color:var(--nrmb)"></span>Click name = normal</span><span><span class="sw" style="background:var(--abn);border-color:var(--abnb)"></span>Click ✗ = abnormal (then describe)</span></div></div>
     <div class="gridsys">${sys}</div>
     <div class="fld" style="margin-top:12px"><label>Exam comments / additional findings</label>${ta('t_pec','pe.comment','','e.g., "2 cm hematoma to the right occiput, no step-off."')}</div>`;
@@ -1306,7 +1307,7 @@ $('#builder').addEventListener('click',e=>{
   switch(t.id){
     case 'rosAllNeg':c.ros.allNeg=!c.ros.allNeg;save();renderTab();schedulePreview();break;
     case 'rosClear':ask('Clear the entire ROS?',()=>{c.ros={items:{},sysNeg:{},allNeg:false,reason:'',comment:''};save();renderTab();schedulePreview();});break;
-    case 'peAllNormal':Object.keys(PE).forEach(s=>PE[s].forEach((_,i)=>{const k=s+'|'+i;if(!c.pe.f[k])c.pe.f[k]='n'}));save();renderTab();schedulePreview();break;
+    case 'peAllNormal':Object.keys(PE).filter(s=>s!=='Genitourinary (GU)').forEach(s=>PE[s].forEach((_,i)=>{const k=s+'|'+i;if(!c.pe.f[k])c.pe.f[k]='n'}));save();renderTab();schedulePreview();break;
     case 'peClear':ask('Clear the entire exam?',()=>{c.pe.f={};save();renderTab();schedulePreview();});break;
     case 'btnPmhAdd':{const v=$('#pmhNew').value.trim();if(v)addPmh(c,v);break}
     case 'btnDdxAdd':{const v=$('#ddxNew').value.trim();if(!v)return;if(!c.ddxAdd.includes(v))c.ddxAdd.push(v);c.ddxOff=c.ddxOff.filter(x=>x!==v);save();renderDdx();break}
