@@ -259,7 +259,7 @@ function setPath(o,p,v){const ks=p.split('.');let a=o;for(let i=0;i<ks.length-1;
 function newChart(){
   return {id:uid(),created:Date.now(),room:'',age:'',sex:'',guTemplate:'',cc:'',status:'active',tab:'hpi',
     attest:{on:false,type:'saw',resident:'',attending:'',custom:'',additions:'',procOn:true,presence:'entire',ccOn:false,ccMin:0},hpi:'',historian:'',labs:{},labsReviewed:false,pmh:[],pmhNone:false,results:[],course:[],assessment:'',procs:[],
-    vitals:{bp:'',hr:'',rr:'',temp:'',spo2:'',pain:''},
+    vitals:{bp:'',hr:'',rr:'',temp:'',tempUnit:'F',spo2:'',pain:''},
     ros:{items:{},sysNeg:{},allNeg:false,reason:'',comment:''},
     pe:{f:{},details:{},abnormalDetails:{},headSplit:true,comment:''},
     profiles:[],profAuto:true,ddxOff:[],ddxAdd:[],rules:{},
@@ -536,7 +536,15 @@ function rosText(c){
   return out.join('\n');
 }
 function listLc(a){a=a.map(x=>x.charAt(0).toLowerCase()+x.slice(1));return a.length<=1?a[0]||'':a.length===2?a.join(' and '):a.slice(0,-1).join(', ')+', and '+a.at(-1)}
-function vitalsText(c){const v=c.vitals||{},p=[];if(v.bp)p.push('BP '+v.bp);if(v.hr)p.push('HR '+v.hr);if(v.rr)p.push('RR '+v.rr);if(v.temp)p.push('Temp '+v.temp);if(v.spo2)p.push('SpO2 '+v.spo2+(/%/.test(v.spo2)?'':'%'));if(v.pain)p.push('Pain '+v.pain+(/\//.test(v.pain)?'':'/10'));return p.length?'Vitals: '+p.join(', ')+'.':''}
+function temperatureText(value,unit){
+  const text=String(value??'').trim();
+  const match=text.match(/^(-?\d+(?:\.\d+)?|-?\.\d+)\s*(?:°\s*)?(c(?:elsius)?|f(?:ahrenheit)?)?$/i);
+  if(!match)return text;
+  const scale=(match[2]||unit||'F').charAt(0).toUpperCase();
+  if(scale==='C')return (Number(match[1])*9/5+32).toFixed(1)+' °F';
+  return match[1]+' °F';
+}
+function vitalsText(c){const v=c.vitals||{},p=[];if(v.bp)p.push('BP '+v.bp);if(v.hr)p.push('HR '+v.hr);if(v.rr)p.push('RR '+v.rr);const temp=temperatureText(v.temp,v.tempUnit);if(temp)p.push('Temp '+temp);if(v.spo2)p.push('SpO2 '+v.spo2+(/%/.test(v.spo2)?'':'%'));if(v.pain)p.push('Pain '+v.pain+(/\//.test(v.pain)?'':'/10'));return p.length?'Vitals: '+p.join(', ')+'.':''}
 function peText(c){
   const f=(c.pe&&c.pe.f)||{},out=[];const vt=vitalsText(c);if(vt)out.push(vt);
   Object.keys(PE).forEach(sys=>{
@@ -1272,7 +1280,7 @@ function peHTML(c){
      </select></label>`:''}
      ${rows.map(({finding:it,index:i})=>{const k=s+'|'+i,val=f[k],cls=val==='n'?'nrm':val==='a'?'abn':'';return `<div class="ri ${cls}" title="${esc(val==='a'?it[2]:it[1])}"><div class="lab" data-pe="${esc(k)}" data-v="n"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(it[0])}</div><button class="mn" data-pe="${esc(k)}" data-v="a" title="Abnormal">✗</button></div>${val==='a'?`<label class="fld">Abnormal finding details<textarea rows="2" id="pe_abnormal_${esc(k)}" data-f="pe.abnormalDetails.${esc(k)}" aria-label="${esc(s+' — '+it[0]+' details')}"></textarea></label>`:''}`;}).join('')}
      <label class="fld" style="margin-top:6px">Additional findings<textarea rows="2" data-f="pe.details.${esc(s)}" aria-label="${esc(s+' — Additional findings')}"></textarea></label></div>`}).join('');
-  return `<div class="sec"><h4>Vitals</h4><div class="grid6">${[['bp','BP','128/76'],['hr','HR','88'],['rr','RR','16'],['temp','Temp','98.6 F'],['spo2','SpO2 %','98'],['pain','Pain /10','6']].map(([k,l,p])=>`<div class="fld"><label>${l}</label><input data-f="vitals.${k}" placeholder="${p}"></div>`).join('')}</div></div>
+  return `<div class="sec"><h4>Vitals</h4><div class="grid6">${[['bp','BP','128/76'],['hr','HR','88'],['rr','RR','16'],['temp','Temp','98.6 or 37 C'],['spo2','SpO2 %','98'],['pain','Pain /10','6']].map(([k,l,p])=>`<div class="fld"><label>${l}</label><input data-f="vitals.${k}" placeholder="${p}" ${k==='temp'?'aria-label="Temperature"':''}>${k==='temp'?'<select aria-label="Temperature unit" data-f="vitals.tempUnit"><option value="F">°F</option><option value="C">°C</option></select>':''}</div>`).join('')}</div></div>
     <div class="row" style="margin-bottom:10px"><button class="tb" id="peAllNormal">Normal exam (all unmarked items except GU)</button><button class="tb" id="peClear">Clear exam</button><span class="hint">Exam template: ${AGE_GROUPS[ageGroup(c)]||'General'}</span><div class="spacer"></div>
     <div class="legendrow"><span><span class="sw" style="background:var(--nrm);border-color:var(--nrmb)"></span>Click name = normal</span><span><span class="sw" style="background:var(--abn);border-color:var(--abnb)"></span>Click ✗ = abnormal</span></div></div>
     <div class="gridsys">${sys}</div>
