@@ -258,7 +258,7 @@ function getPath(o,p){return p.split('.').reduce((a,k)=>a==null?a:a[k],o)}
 function setPath(o,p,v){const ks=p.split('.');let a=o;for(let i=0;i<ks.length-1;i++)a=a[ks[i]];a[ks.at(-1)]=v}
 function newChart(){
   return {id:uid(),created:Date.now(),room:'',age:'',sex:'',cc:'',status:'active',tab:'hpi',
-    attest:{on:false,type:'saw',resident:'',attending:'',custom:'',additions:'',procOn:true,presence:'entire',ccOn:false,ccMin:0},hpi:'',historian:'',labs:{},pmh:[],pmhNone:false,results:[],course:[],assessment:'',procs:[],
+    attest:{on:false,type:'saw',resident:'',attending:'',custom:'',additions:'',procOn:true,presence:'entire',ccOn:false,ccMin:0},hpi:'',historian:'',labs:{},labsReviewed:false,pmh:[],pmhNone:false,results:[],course:[],assessment:'',procs:[],
     vitals:{bp:'',hr:'',rr:'',temp:'',spo2:'',pain:''},
     ros:{items:{},sysNeg:{},allNeg:false,reason:'',comment:''},
     pe:{f:{},comment:''},
@@ -422,6 +422,7 @@ function labLines(c){
     }
     out.push(`${pn}: ${t}.`);
   });
+  if(c.labsReviewed)out.push('Common lab results independently reviewed.');
   return out;
 }
 const ROS_REASONS=['','Patient altered / unable to provide','Patient intubated / sedated','Patient critically ill','Language barrier, interpreter unavailable','Patient uncooperative','Preverbal child'];
@@ -1144,7 +1145,9 @@ function labsHTML(c){
     return `<div class="sys"><div class="sh"><b>${esc(pn)}</b><button class="tb" style="padding:1px 7px;font-size:11.5px" data-laball="${esc(pn)}">All normal</button></div>
     ${LAB_PANELS[pn].map(([n,nw])=>{const k=pn+'|'+n,val=f[n],cls=val==='n'?'nrm':val==='a'?'abn':'';
       return `<div class="ri ${cls}"><div class="lab" data-lab="${esc(k)}" data-v="n" title="Normal${nw?' ('+nw+')':''}"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(n)}</div><button class="mn" data-lab="${esc(k)}" data-v="a" title="Abnormal: enter value">✗</button></div>${val==='a'?`<input class="pedet" data-labval="${esc(k)}" value="${esc(v[n]||'')}" placeholder="Value, e.g., ${esc(n==='WBC'?'14.2':n==='Potassium'?'5.8':n==='Hemoglobin'?'8.9':'result')}" style="width:100%;margin:-1px 0 4px;border:1px solid var(--abnb);border-radius:4px;padding:3px 6px;font-size:12px">`:''}`}).join('')}</div>`}).join('');
-  return `<div class="sec"><h4>Common labs</h4><div class="chips" style="margin-bottom:10px">${chips}</div>
+  return `<div class="sec"><h4>Common labs</h4>
+    <label class="chk" style="margin-bottom:8px"><input type="checkbox" data-f="labsReviewed"> Independently reviewed</label>
+    <div class="chips" style="margin-bottom:10px">${chips}</div>
     ${boxes?`<div class="legendrow" style="margin-bottom:6px"><span><span class="sw" style="background:var(--nrm);border-color:var(--nrmb)"></span>Click name = normal</span><span><span class="sw" style="background:var(--abn);border-color:var(--abnb)"></span>Click ✗ = abnormal (then enter the value)</span><span>Unmarked components show as pending</span></div><div class="gridsys">${boxes}</div>`:'<div class="hint">Tick the labs you ordered to open their result boxes.</div>'}</div>`;
 }
 function renderEntries(){
