@@ -258,7 +258,7 @@ function getPath(o,p){return p.split('.').reduce((a,k)=>a==null?a:a[k],o)}
 function setPath(o,p,v){const ks=p.split('.');let a=o;for(let i=0;i<ks.length-1;i++)a=a[ks[i]];a[ks.at(-1)]=v}
 function newChart(){
   return {id:uid(),created:Date.now(),room:'',age:'',sex:'',guTemplate:'',cc:'',status:'active',tab:'hpi',
-    attest:{on:false,type:'saw',resident:'',attending:'',custom:'',additions:'',procOn:true,presence:'entire',ccOn:false,ccMin:0},hpi:'',historian:'',labs:{},labsReviewed:false,pmh:[],pmhNone:false,results:[],course:[],assessment:'',procs:[],
+    attest:{on:false,type:'saw',resident:'',attending:'',custom:'',additions:'',procOn:true,presence:'entire',ccOn:false,ccMin:0},handoff:{on:false,to:'',time:'',status:'',pending:'',plan:''},hpi:'',historian:'',labs:{},labsReviewed:false,pmh:[],pmhNone:false,results:[],course:[],assessment:'',procs:[],
     vitals:{bp:'',hr:'',rr:'',temp:'',tempUnit:'C',tempEntryVersion:2,spo2:'',pain:''},
     ros:{items:{},sysNeg:{},allNeg:false,reason:'',comment:''},
     pe:{f:{},details:{},abnormalDetails:{},headSplit:true,comment:''},
@@ -388,9 +388,30 @@ function attestText(c){
   out.push(`${sig}. Date of service: ${new Date(c.created).toLocaleDateString()}.`);
   return out.join('\n');
 }
+function handoffText(c){
+  const h=c.handoff;
+  if(!h?.on)return '';
+  const to=h.to.trim(),time=h.time.trim();
+  const transfer='At shift change'+(time?' ('+time+')':'')+', I handed off care of this patient'+(to?' to '+to:'')+'.';
+  return [transfer,...[['Patient status',h.status],['Pending items',h.pending],['Plan',h.plan]]
+    .filter(([,value])=>value.trim()).map(([label,value])=>label+': '+value.trim())].join('\n');
+}
+function handoffHTML(c){
+  return `<div class="sec"><h4>Shift-change handoff</h4>
+    <label class="chk"><input type="checkbox" data-f="handoff.on"> Include shift-change handoff in the note</label>
+    <div class="grid2">
+      <label class="fld">Receiving clinician<input data-f="handoff.to"></label>
+      <label class="fld">Handoff time (optional)<input data-f="handoff.time"></label>
+    </div>
+    <label class="fld">Patient status<textarea rows="2" data-f="handoff.status"></textarea></label>
+    <label class="fld">Pending tests, consults, or reassessment<textarea rows="2" data-f="handoff.pending"></textarea></label>
+    <label class="fld">Plan and disposition contingencies<textarea rows="2" data-f="handoff.plan"></textarea></label>
+    <div class="note" id="handoffPreview" style="white-space:pre-wrap" ${c.handoff.on?'':'hidden'}>${esc(handoffText(c))}</div>
+  </div>`;
+}
 function attestHTML(c){
   const a=c.attest;
-  return `<label class="chk" style="font-size:14px;margin-bottom:10px"><input type="checkbox" data-f="attest.on" data-type="bool"> <b>Include attending attestation in the note</b></label>
+  return `${handoffHTML(c)}<label class="chk" style="font-size:14px;margin-bottom:10px"><input type="checkbox" data-f="attest.on" data-type="bool"> <b>Include attending attestation in the note</b></label>
   <div class="grid2"><div class="fld"><label>Attending name</label><input data-f="attest.attending" placeholder="e.g., Smith"></div><div class="fld"><label>Resident name (optional)</label><input data-f="attest.resident" placeholder="e.g., Jones"></div></div>
   <div class="fld" style="margin-top:10px"><label>Attestation</label><select data-f="attest.type">${Object.entries(ATTEST_TYPES).map(([k,v])=>`<option value="${k}">${esc(v[0])}</option>`).join('')}</select></div>
   ${a.type==='review'?'<div class="note warn" style="margin-top:6px">A review-only attestation generally does not support teaching-physician billing. Billing usually requires the attending to personally see the patient or be present for the key portions.</div>':''}
@@ -1137,7 +1158,7 @@ function noteSections(c){
   const cc=c.cc?`Chief complaint: ${c.cc}`:'';
   const hpi=[hpiOpener(c),c.hpi.trim(),pmhText(c),c.historian.trim()?`History obtained in part from ${c.historian.trim()} (independent historian).`:''].filter(Boolean).join('\n');
   const res=labLines(c).concat(c.results.map(r=>`${r.type}: ${r.text}${resultAnnotation(r)}`)).join('\n');
-  return [['HPI',hpi,'hpi'],['Review of Systems',rosText(c),'ros'],['Physical Exam',peText(c),'pe'],['Results',res,'results'],['MDM',c.mdm.trim(),'mdm'],['Procedures',c.procs.map(p=>p.text.trim()).join('\n\n'),'procs'],['Attending Attestation',attestText(c),'attest']].filter(x=>x[2]!=='attest'||(c.attest&&c.attest.on));
+  return [['HPI',hpi,'hpi'],['Review of Systems',rosText(c),'ros'],['Physical Exam',peText(c),'pe'],['Results',res,'results'],['MDM',c.mdm.trim(),'mdm'],['Procedures',c.procs.map(p=>p.text.trim()).join('\n\n'),'procs'],['Attending Attestation',attestText(c),'attest']].filter(x=>x[2]!=='attest'||c.attest?.on).concat(c.handoff?.on?[['Shift-change Handoff Attestation',handoffText(c),'attest']]:[]);
 }
 const IMAGING_STUDIES={
   CXR:['Chest x-ray (1 view)','Chest x-ray (2 views)','Chest x-ray (other)'],
@@ -1407,6 +1428,10 @@ document.addEventListener('input',e=>{
   const f=el.dataset?.f;if(!f||f.startsWith('_'))return;
   let v=el.type==='checkbox'?el.checked:el.value;if(el.dataset.type==='num')v=Math.max(0,+v||0);
   setPath(c,f,v);
+  if(f.startsWith('handoff.')){
+    const preview=$('#handoffPreview');
+    if(preview){preview.hidden=!c.handoff.on;preview.textContent=handoffText(c)}
+  }
   if(f==='vitals.temp'||f==='vitals.tempUnit'){
     const output=$('#tempFahrenheit');
     if(output)output.textContent=temperatureText(c.vitals.temp,c.vitals.tempUnit);
