@@ -318,8 +318,8 @@ const PMH_ALL=Object.values(PMH_LIST).flat();
 function pmhText(c){if(c.pmhNone&&!(c.pmh||[]).length)return'Past medical history: None significant.';if(!(c.pmh||[]).length)return'';return'Past medical history: '+c.pmh.map(x=>PMH_ALL.includes(x)&&/^[A-Z][a-z]/.test(x)?x.charAt(0).toLowerCase()+x.slice(1):x).join(', ')+'.'}
 const LAB_PANELS={
  'CBC':[['WBC'],['Hemoglobin'],['Hematocrit'],['Platelets']],
- 'BMP':[['Sodium'],['Potassium'],['Chloride'],['Bicarbonate'],['BUN'],['Creatinine'],['Glucose'],['Calcium']],
- 'CMP':[['Sodium'],['Potassium'],['Chloride'],['Bicarbonate'],['BUN'],['Creatinine'],['Glucose'],['Calcium'],['Total protein'],['Albumin'],['AST'],['ALT'],['Alkaline phosphatase'],['Total bilirubin']],
+ 'BMP':[['Sodium'],['Potassium'],['Chloride'],['Bicarbonate'],['Anion gap'],['BUN'],['Creatinine'],['Glucose'],['Calcium']],
+ 'CMP':[['Sodium'],['Potassium'],['Chloride'],['Bicarbonate'],['Anion gap'],['BUN'],['Creatinine'],['Glucose'],['Calcium'],['Total protein'],['Albumin'],['AST'],['ALT'],['Alkaline phosphatase'],['Total bilirubin']],
  'Troponin':[['Initial troponin','negative'],['Repeat troponin','negative']],
  'BNP':[['BNP']],
  'Lipase':[['Lipase']],
@@ -399,6 +399,7 @@ function attestHTML(c){
     <div class="hint" style="margin-top:4px">With a resident involved, only the attending's own critical care time counts toward 99291/99292, not teaching time or time the resident spent alone. When this box is ticked, the billing level uses this number.</div></div>
   <div class="sec"><h4>Preview</h4><div class="note" id="attPrev" style="white-space:pre-wrap;background:#fff">${esc(attestText(c))||'<span class="hint">Tick "Include attending attestation" to add it to the note.</span>'}</div></div>`;
 }
+const labComponentLabel=name=>name==='Bicarbonate'?'Carbon dioxide (bicarbonate)':name;
 function labLines(c){
   const L=c.labs||{},out=[];
   Object.keys(LAB_PANELS).forEach(pn=>{
@@ -411,13 +412,13 @@ function labLines(c){
     if(!abn.length&&!nrm.length)t='pending';
     else if(comps.length===1)t=abn.length?(v[comps[0][0]]||'abnormal'):nw(comps[0]);
     else{
-      const parts=abn.map(x=>`${x[0]} ${v[x[0]]||'abnormal'}`);
-      if(!abn.length&&!un.length)t=qual?(nrm.every(x=>x[1]==='negative')?'negative':nrm.map(x=>`${x[0]} ${x[1]}`).join(', ')):'within normal limits';
+      const parts=abn.map(x=>`${labComponentLabel(x[0])} ${v[x[0]]||'abnormal'}`);
+      if(!abn.length&&!un.length)t=qual?(nrm.every(x=>x[1]==='negative')?'negative':nrm.map(x=>`${labComponentLabel(x[0])} ${x[1]}`).join(', ')):'within normal limits';
       else{
         t=parts.join(', ');
         if(nrm.length&&!un.length)t+=(t?'; ':'')+(qual?'otherwise negative':'otherwise within normal limits');
-        else if(nrm.length)t+=(t?'; ':'')+nrm.map(x=>`${x[0]} ${qual?x[1]:'normal'}`).join(', ');
-        if(un.length&&(abn.length||nrm.length))t+=`; ${un.map(x=>x[0]).join(', ')} pending`;
+        else if(nrm.length)t+=(t?'; ':'')+nrm.map(x=>`${labComponentLabel(x[0])} ${qual?x[1]:'normal'}`).join(', ');
+        if(un.length&&(abn.length||nrm.length))t+=`; ${un.map(x=>labComponentLabel(x[0])).join(', ')} pending`;
       }
     }
     out.push(`${pn}: ${t}.`);
@@ -1144,7 +1145,7 @@ function labsHTML(c){
   const boxes=Object.keys(LAB_PANELS).filter(pn=>L[pn]&&L[pn].on).map(pn=>{const P=L[pn],f=P.f||{},v=P.v||{};
     return `<div class="sys"><div class="sh"><b>${esc(pn)}</b><button class="tb" style="padding:1px 7px;font-size:11.5px" data-laball="${esc(pn)}">All normal</button></div>
     ${LAB_PANELS[pn].map(([n,nw])=>{const k=pn+'|'+n,val=f[n],cls=val==='n'?'nrm':val==='a'?'abn':'';
-      return `<div class="ri ${cls}"><div class="lab" data-lab="${esc(k)}" data-v="n" title="Normal${nw?' ('+nw+')':''}"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(n)}</div><button class="mn" data-lab="${esc(k)}" data-v="a" title="Abnormal: enter value">✗</button></div>${val==='a'?`<input class="pedet" data-labval="${esc(k)}" value="${esc(v[n]||'')}" placeholder="Value, e.g., ${esc(n==='WBC'?'14.2':n==='Potassium'?'5.8':n==='Hemoglobin'?'8.9':'result')}" style="width:100%;margin:-1px 0 4px;border:1px solid var(--abnb);border-radius:4px;padding:3px 6px;font-size:12px">`:''}`}).join('')}</div>`}).join('');
+      return `<div class="ri ${cls}"><div class="lab" data-lab="${esc(k)}" data-v="n" title="Normal${nw?' ('+nw+')':''}"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(labComponentLabel(n))}</div><button class="mn" data-lab="${esc(k)}" data-v="a" title="Abnormal: enter value">✗</button></div>${val==='a'?`<input class="pedet" data-labval="${esc(k)}" value="${esc(v[n]||'')}" placeholder="Value, e.g., ${esc(n==='WBC'?'14.2':n==='Potassium'?'5.8':n==='Hemoglobin'?'8.9':'result')}" style="width:100%;margin:-1px 0 4px;border:1px solid var(--abnb);border-radius:4px;padding:3px 6px;font-size:12px">`:''}`}).join('')}</div>`}).join('');
   return `<div class="sec"><h4>Common labs</h4>
     <label class="chk" style="margin-bottom:8px"><input type="checkbox" data-f="labsReviewed"> Independently reviewed</label>
     <div class="chips" style="margin-bottom:10px">${chips}</div>
