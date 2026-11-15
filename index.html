@@ -374,7 +374,7 @@ function attestText(c){
   if(main)out.push(main);
   if(a.additions.trim())out.push('Additions/exceptions: '+a.additions.trim().replace(/\s*$/,'').replace(/([^.!?])$/,'$1.'));
   if(a.procOn&&(c.procs||[]).length){
-    const ecg=c.procs.some(p=>p.type==='ECG interpretation'),pr=uniq(c.procs.filter(p=>p.type!=='ECG interpretation'&&p.type!=='Critical care').map(p=>p.type.replace(/ \(.*\)$/,'').toLowerCase()));
+    const ecg=c.procs.some(p=>p.type==='ECG interpretation'),pr=uniq(c.procs.filter(p=>p.type!=='ECG interpretation'&&p.type!=='Critical care'&&!p.performer).map(p=>p.type.replace(/ \(.*\)$/,'').toLowerCase()));
     if(pr.length)out.push(`I was present for ${a.presence==='entire'?'the entire procedure':'the key and critical portions of the procedure and immediately available for the remainder'}: ${pr.join(', ')}.`);
     if(ecg)out.push('I personally reviewed the ECG and agree with the interpretation as documented.');
   }
@@ -493,10 +493,10 @@ function peText(c){
 const PROC_TEMPLATES={
  'Critical care':'PROCEDURE: Critical care\nCritical care time: [minutes] minutes, exclusive of separately billable procedures\nCritical condition: [sepsis / septic shock / acute respiratory failure / cardiac arrest / shock / STEMI / stroke / DKA / GI hemorrhage / status epilepticus / multisystem trauma / other]\nOrgan system(s) at risk: [cardiovascular / respiratory / neurologic / renal / hepatic / metabolic / multiple]\nInterventions: [e.g., vasopressors, BiPAP, IV fluids, blood products, frequent reassessment]\nStatement: The patient had a high probability of imminent or life-threatening deterioration. Critical care was required to assess, manipulate, and support vital organ system function. This time excludes separately billable procedures.',
  'ECG interpretation':'PROCEDURE: ECG interpretation (interpreted by me)\nIndication: [chest pain / syncope / palpitations / dyspnea / weakness / other]\nRate: [rate] bpm\nRhythm: [=normal sinus rhythm]\nAxis: [=normal]\nIntervals: |PR [ms] ms|, QRS [ms] ms|, QTc [ms] ms\nST segments: [=no ST elevation or depression]\nT waves: [=no acute T-wave changes]\nComparison: [no prior available / unchanged from prior / changed from prior]\nImpression: [impression]',
- 'Laceration repair':'PROCEDURE: Laceration repair\nIndication: |[length] cm |laceration| to the [location]\nConsent: Risks, benefits, and alternatives discussed; verbal consent obtained.\nTime-out: Performed.\nAnesthesia: |[=1% lidocaine] |local infiltration|, [mL] mL|.\n!Preparation: Wound irrigated| with [mL] mL normal saline| and explored; no foreign body, tendon, or vascular involvement identified.\nRepair: |[simple / intermediate / complex] |repair| with [number] sutures| (suture: [size/type, e.g., 4-0 nylon])|.\nDressing: [=antibiotic ointment and dry dressing].\nComplications: None. The patient tolerated the procedure well.',
- 'Incision and drainage':'PROCEDURE: Incision and drainage\nIndication: Abscess| to the [location]|, approximately [size] cm\nConsent: Risks, benefits, and alternatives discussed; verbal consent obtained.\nTime-out: Performed.\nAnesthesia: |[=1% lidocaine] |local infiltration.\n!Procedure: Area prepped in usual fashion. Incision| of [length] cm| made. Purulent material expressed| ([small / moderate / large] amount)|. Loculations broken up with hemostat. Cavity irrigated.| [packing placed / no packing placed]|.\nComplications: None. The patient tolerated the procedure well.',
+ 'Laceration repair':'PROCEDURE: Laceration repair\nIndication: |[length] cm |laceration| to the [location]\nTime-out: Performed.\nAnesthesia: |[=1% lidocaine] |local infiltration|, [mL] mL|.\n!Preparation: Wound irrigated| with [mL] mL normal saline| and explored; no foreign body, tendon, or vascular involvement identified.\nRepair: |[simple / intermediate / complex] |repair| with [number] sutures| (suture: [size/type, e.g., 4-0 nylon])|.\nDressing: [=antibiotic ointment and dry dressing].\nComplications: None. The patient tolerated the procedure well.',
+ 'Incision and drainage':'PROCEDURE: Incision and drainage\nIndication: Abscess| to the [location]|, approximately [size] cm\nTime-out: Performed.\nAnesthesia: |[=1% lidocaine] |local infiltration.\n!Procedure: Area prepped in usual fashion. Incision| of [length] cm| made. Purulent material expressed| ([small / moderate / large] amount)|. Loculations broken up with hemostat. Cavity irrigated.| [packing placed / no packing placed]|.\nComplications: None. The patient tolerated the procedure well.',
  'Splint application':'PROCEDURE: Splint application\nIndication: [diagnosis]\nSplint: |[posterior short-leg / volar / sugar-tong / thumb spica / ulnar gutter / long-arm] |splint applied| to the [extremity]| using [=plaster]|.\nPost-procedure: Neurovascularly intact distally with good capillary refill; splint well-fitting.\nComplications: None.',
- 'Fracture/dislocation reduction':'PROCEDURE: Closed reduction| of [joint / fracture]\nIndication: [diagnosis]\nConsent: Risks, benefits, and alternatives discussed; consent obtained.\nTime-out: Performed.\nAnesthesia: [procedural sedation / hematoma block / intra-articular lidocaine / none].\nTechnique: |[technique]; |successful reduction| confirmed [clinically / on post-reduction imaging / clinically and on post-reduction imaging]|.\nPost-procedure: Neurovascularly intact distally.| [splint / sling / immobilizer] applied.\nComplications: None.',
+ 'Fracture/dislocation reduction':'PROCEDURE: Closed reduction| of [joint / fracture]\nIndication: [diagnosis]\nTime-out: Performed.\nAnesthesia: [procedural sedation / hematoma block / intra-articular lidocaine / none].\nTechnique: |[technique]; |successful reduction| confirmed [clinically / on post-reduction imaging / clinically and on post-reduction imaging]|.\nPost-procedure: Neurovascularly intact distally.| [splint / sling / immobilizer] applied.\nComplications: None.',
  'Procedural sedation':'PROCEDURE: Procedural sedation\nIndication: [procedure]\n!Pre-sedation: |ASA class [I / II / III]; |airway assessed|; NPO status: [NPO status]|. Consent obtained after discussion of risks, benefits, and alternatives.\nMonitoring: Continuous cardiac monitoring, pulse oximetry, and capnography; I was present at the bedside throughout.\nMedications: [agent and dose].\nSedation time: |[start]|–[end]|.\nOutcome: Procedure completed. Patient returned to baseline mental status.\nComplications: None.',
  'Endotracheal intubation':'PROCEDURE: Endotracheal intubation\nIndication: [airway protection / hypoxic respiratory failure / hypercarbic respiratory failure / anticipated clinical course]\nConsent: [=emergent, implied consent].\nPreoxygenation: [nonrebreather / BVM / high-flow nasal cannula / noninvasive ventilation].\nMedications: |[induction agent and dose]|; [paralytic and dose]|.\nTechnique: |[video / direct] |laryngoscopy| with [blade] blade|, grade [1 / 2 / 3 / 4] view|. ETT placed|, size [size]|, [cm] cm at the teeth|, on attempt [#]|.\nConfirmation: End-tidal CO2 color change/waveform, bilateral breath sounds, chest rise, and chest x-ray.\nComplications: None.',
  'Central line (central venous catheter)':'PROCEDURE: Central venous catheter placement\nIndication: [vascular access / vasopressor administration / hemodynamic monitoring]\nConsent: [risks, benefits, and alternatives discussed; consent obtained / emergent, implied consent].\nTime-out: Performed.\n!Technique: Full sterile barrier precautions. Ultrasound-guided cannulation of the |[right / left] |[internal jugular / femoral / subclavian] |vein using Seldinger technique. Catheter placed|: [catheter type]|, secured at [cm] cm|. Blood return from all ports; all ports flushed.\nConfirmation: [chest x-ray / ultrasound].\nComplications: None.',
@@ -507,6 +507,11 @@ const BLANK_PROC='PROCEDURE: [procedure name]\nIndication: [indication]\nConsent
 function syncCC(c){c.coding.ccMin=(c.procs||[]).filter(p=>p.type==='Critical care').reduce((t,p)=>t+(parseInt(p.vals&&p.vals[0])||0),0);refreshLevel()}
 function procFields(tpl){const f=[];tpl.replace(/\[([^\]]*)\]/g,(m,h)=>{f.push(h)});return f}
 function procInit(tpl){return procFields(tpl).map(h=>h.startsWith('=')?h.slice(1):'')}
+const PROCEDURES_WITH_CONSENT=new Set(['Laceration repair','Incision and drainage','Fracture/dislocation reduction']);
+const PROCEDURE_PERFORMERS={
+  self:'I performed the procedure.',
+  resident:'The resident performed the procedure under my direct supervision.',
+};
 function procText(p){
   if(!p.tpl)return p.text||'';
   let n=0;const vals=p.vals||[],val=k=>String(vals[k]||'').trim(),out=[];
@@ -530,6 +535,16 @@ function procText(p){
     if(!/[A-Za-z0-9]/.test(b))return;
     out.push(label+b);
   });
+  if(PROCEDURES_WITH_CONSENT.has(p.type)){
+    const legacyConsent=out.findIndex(line=>line.startsWith('Consent:'));
+    if(legacyConsent>=0&&p.verbalConsent!==undefined)out.splice(legacyConsent,1);
+    const insertAt=out.findIndex(line=>line.startsWith('Time-out:'));
+    const documentation=[
+      p.verbalConsent?'Consent: Verbal consent was obtained.':'',
+      PROCEDURE_PERFORMERS[p.performer]||'',
+    ].filter(Boolean);
+    out.splice(insertAt<0?1:insertAt,0,...documentation);
+  }
   let t=out.join('\n');
   if(p.extra&&p.extra.trim())t+='\nAdditional details: '+p.extra.trim();
   return t;
@@ -1185,7 +1200,7 @@ function renderProcs(){
     let body;
     if(p.tpl){
       let i=0;
-      const lines=p.tpl.split('\n').map(line=>{
+      const lines=p.tpl.split('\n').filter(line=>!(PROCEDURES_WITH_CONSENT.has(p.type)&&line.startsWith('Consent:'))).map(line=>{
         const html=esc(line.replace(/^!/,'')).replace(/\|/g,'').replace(/\[([^\]]*)\]/g,(m,h)=>{
           const idx=i++,hint=h.replace(/^=/,''),opts=hint.includes(' / ')?hint.split(' / ').map(x=>x.trim()).filter(Boolean):[];
           const v=p.vals[idx]||'',ph=opts.length?'choose or type…':hint,w=Math.max(8,Math.min(60,Math.max(v.length,ph.length)+2));
@@ -1194,8 +1209,15 @@ function renderProcs(){
         const m=html.match(/^([A-Za-z0-9 \-\/()]+:)(.*)$/);
         return `<div class="pline">${m?`<span class="plab">${m[1]}</span>${m[2]}`:html}</div>`;
       }).join('');
+      const documentation=PROCEDURES_WITH_CONSENT.has(p.type)?`<div class="row" style="margin-bottom:8px">
+        <label class="chk"><input type="checkbox" data-procconsent="${esc(p.id)}" ${p.verbalConsent?'checked':''}> Verbal consent obtained</label>
+        <fieldset><legend>Performed by</legend>
+          <label class="chk"><input type="radio" name="performer_${esc(p.id)}" data-procperformer="${esc(p.id)}" value="self" ${p.performer==='self'?'checked':''}> Myself</label>
+          <label class="chk"><input type="radio" name="performer_${esc(p.id)}" data-procperformer="${esc(p.id)}" value="resident" ${p.performer==='resident'?'checked':''}> Resident under my direct supervision</label>
+        </fieldset>
+      </div>`:'';
       const empty=p.vals.filter(v=>!String(v||'').trim()).length;
-      body=`<div class="pform">${lines}</div>
+      body=`${documentation}<div class="pform">${lines}</div>
         <div class="fld" style="margin-top:8px"><label>Additional details (optional)</label><div class="taw"><textarea id="px_${p.id}" data-pextra="${p.id}" style="min-height:60px">${esc(p.extra||'')}</textarea><button class="mic" data-mic="px_${p.id}">${MIC}</button></div><div class="interim" data-interim="px_${p.id}"></div></div>
         <div class="hint" id="pcnt_${p.id}">${empty?`${empty} box${empty>1?'es':''} empty (left out of the note)`:'All boxes filled ✓'}</div>`;
     }else body=`<div class="taw"><textarea id="pr_${p.id}" data-proc="${p.id}" class="tall">${esc(p.text)}</textarea><button class="mic" data-mic="pr_${p.id}">${MIC}</button></div><div class="interim" data-interim="pr_${p.id}"></div>`;
@@ -1281,6 +1303,15 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
   const c=active();if(!c)return;const t=e.target;
   if(t.dataset.labon){const pn=t.dataset.labon;c.labs=c.labs||{};c.labs[pn]=c.labs[pn]||{f:{},v:{}};c.labs[pn].on=t.checked;save();const sc=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=sc;renderTabs();schedulePreview();return}
+  if(t.dataset.procconsent||t.dataset.procperformer){
+    const p=c.procs.find(item=>item.id===(t.dataset.procconsent||t.dataset.procperformer));
+    if(!p)return;
+    if(t.dataset.procconsent)p.verbalConsent=t.checked;
+    else p.performer=t.value;
+    p.text=procText(p);
+    save();schedulePreview();
+    return;
+  }
   if(t.id==='imgModality'||t.id==='imgStudy'){updateImagingOptions(t.id==='imgModality');return}
   if(t.id==='rType'){
     $('#rCxrDiscussField').style.display=t.value==='CXR'?'':'none';
