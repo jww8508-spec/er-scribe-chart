@@ -423,7 +423,7 @@ function labLines(c){
     }
     out.push(`${pn}: ${t}.`);
   });
-  if(c.labsReviewed)out.push('Common lab results independently reviewed.');
+  if(c.labsReviewed)out.push('Lab results independently reviewed.');
   return out;
 }
 const ROS_REASONS=['','Patient altered / unable to provide','Patient intubated / sedated','Patient critically ill','Language barrier, interpreter unavailable','Patient uncooperative','Preverbal child'];
@@ -837,7 +837,7 @@ function writeMDM(c){
   if(hist)D.push(`History obtained in part from ${hist} as an independent historian.`);
   const byType=t=>c.results.filter(r=>r.type===t);
   labLines(c).forEach(l=>D.push(l));
-  byType('Labs').forEach(r=>D.push(`Labs: ${sentence(r.text)}`));
+  byType('Labs').forEach(r=>D.push(`Labs: ${sentence(r.text)}${resultAnnotation(r)}`));
   ['ECG','Imaging','CXR','POCUS'].forEach(t=>byType(t).forEach(r=>D.push(r.interp?`${t}, my independent interpretation: ${sentence(r.text)}${resultAnnotation(r)}`:`${t}: ${sentence(r.text)}${resultAnnotation(r)}`)));
   if((c.procs||[]).some(p=>p.type==='ECG interpretation'))D.push('ECG: interpreted by me; see ECG procedure note.');
   byType('External records').forEach(r=>D.push(`External records reviewed: ${sentence(r.text)}`));
@@ -847,7 +847,8 @@ function writeMDM(c){
   if(tests.length)D.push(`Unique tests ordered and reviewed: ${tests.join(', ')}.`);
   if(!c.results.length&&!labLines(c).length)gaps.push('No results/data entered yet.');
   if(c.results.some(r=>/imag|ecg/i.test(r.type))&&!c.results.some(r=>r.interp))gaps.push('ECG/imaging entered without your own interpretation. Document your read to support Data complexity.');
-  if(D.length)S.push('DATA REVIEWED AND INTERPRETED:\n'+D.join('\n'));
+  const independent=c.labsReviewed||c.results.some(r=>['Labs','ECG','Imaging','CXR','POCUS'].includes(r.type)&&(r.reviewed||r.interp));
+  if(D.length)S.push('DATA REVIEWED AND INTERPRETED'+(independent?' INDEPENDENTLY':'')+':\n'+D.join('\n'));
   // 3 ED course (synthesized)
   const reeval=byType('Vitals/Re-eval');
   const autoC=courseAuto(c);
@@ -918,7 +919,7 @@ ABSOLUTE RULES
 3. ED COURSE / INTERVENTIONS DISCUSSION is the clinician thinking out loud. Do NOT copy it verbatim. SYNTHESIZE it into clinical reasoning: interventions and why, response to treatment, re-evaluations, how findings changed the differential and led to the disposition.
 4. Decision-rule results provided by the clinician are authoritative; use them as given. Add other validated rules only if all components are present in the packet.
 5. Physician voice ("I"), chart-ready PLAIN TEXT, no markdown or asterisks. Section headings in ALL CAPS followed by a colon:
-DIFFERENTIAL DIAGNOSIS / DATA REVIEWED AND INTERPRETED / ED COURSE AND RESPONSE TO INTERVENTIONS / CLINICAL DECISION RULES / RISK STRATIFICATION / RISKS, BENEFITS, AND SHARED DECISION MAKING / DISPOSITION AND RATIONALE / CLINICAL IMPRESSION. Follow the OPTIONS line in the packet for whether to include decision rules, risk stratification, and risks/benefits. Omit empty sections.
+DIFFERENTIAL DIAGNOSIS / DATA REVIEWED AND INTERPRETED / ED COURSE AND RESPONSE TO INTERVENTIONS / CLINICAL DECISION RULES / RISK STRATIFICATION / RISKS, BENEFITS, AND SHARED DECISION MAKING / DISPOSITION AND RATIONALE / CLINICAL IMPRESSION. When the packet explicitly documents independent review or interpretation, use DATA REVIEWED AND INTERPRETED INDEPENDENTLY as the data heading. Follow the OPTIONS line in the packet for whether to include decision rules, risk stratification, and risks/benefits. Omit empty sections.
 6. Assess 2023 AMA CPT ED E/M MDM elements (99281-99285): problems (minimal|low|moderate|high; HIGH = acute/chronic illness posing threat to life or bodily function, including a workup required to evaluate for one), unique_tests (count of distinct tests ordered/reviewed), external_notes (count of sources), independent_historian, independent_interpretation, external_discussion (booleans, only if documented), risk (minimal|low|moderate|high; moderate = prescription drug management or SDOH limiting care; high = decision regarding hospitalization incl. documented consideration of admission, parenteral controlled substances, drug therapy requiring intensive monitoring, emergency surgery, DNR/de-escalation).
 
 Reply with ONLY this JSON in a single code block:
