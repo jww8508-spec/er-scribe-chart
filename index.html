@@ -351,7 +351,7 @@ function courseAuto(c){
   const labs=uniq(panels.concat(freeNames));
   if(labs.length)out.push(`Labs obtained: ${lst(labs.map(lcx))}.`);
   const imgEntries=c.results.filter(r=>r.type==='Imaging').map(r=>r.text);
-  let imgs=[];imgEntries.forEach(t=>{let t2=t;const hits=IMG.filter(n=>{const re=TESTS.find(x=>x[0]===n)[1];if(n==='X-ray')t2=t2.replace(/chest x-?ray|cxr|chest radiograph|chest film/gi,'');return re.test(n==='X-ray'?t2:t)});if(hits.length)imgs.push(...hits);else imgs.push((t.split(/[:\n]/)[0]||'imaging').trim().slice(0,40))});
+  let imgs=c.results.some(r=>r.type==='CXR')?['Chest x-ray']:[];imgEntries.forEach(t=>{let t2=t;const hits=IMG.filter(n=>{const re=TESTS.find(x=>x[0]===n)[1];if(n==='X-ray')t2=t2.replace(/chest x-?ray|cxr|chest radiograph|chest film/gi,'');return re.test(n==='X-ray'?t2:t)});if(hits.length)imgs.push(...hits);else imgs.push((t.split(/[:\n]/)[0]||'imaging').trim().slice(0,40))});
   if(c.results.some(r=>r.type==='POCUS')||(c.procs||[]).some(p=>/POCUS|ultrasound/i.test(p.type)))imgs.push('point-of-care ultrasound');
   imgs=uniq(imgs.map(x=>x==='CT (other)'?'CT':x));
   if(imgs.length)out.push(`Imaging obtained: ${lst(imgs.map(lcx))}.`);
@@ -836,7 +836,7 @@ function writeMDM(c){
   const byType=t=>c.results.filter(r=>r.type===t);
   labLines(c).forEach(l=>D.push(l));
   byType('Labs').forEach(r=>D.push(`Labs: ${sentence(r.text)}`));
-  ['ECG','Imaging','POCUS'].forEach(t=>byType(t).forEach(r=>D.push(r.interp?`${t}, my independent interpretation: ${sentence(r.text)}`:`${t}: ${sentence(r.text)}`)));
+  ['ECG','Imaging','CXR','POCUS'].forEach(t=>byType(t).forEach(r=>D.push(r.interp?`${t}, my independent interpretation: ${sentence(r.text)}${resultAnnotation(r)}`:`${t}: ${sentence(r.text)}${resultAnnotation(r)}`)));
   if((c.procs||[]).some(p=>p.type==='ECG interpretation'))D.push('ECG: interpreted by me; see ECG procedure note.');
   byType('External records').forEach(r=>D.push(`External records reviewed: ${sentence(r.text)}`));
   byType('Other').forEach(r=>D.push(sentence(r.text)));
@@ -932,7 +932,7 @@ function chartPacket(c){
   L.push('','=== DIFFERENTIAL SELECTED BY CLINICIAN ===',`Considered: ${ddx.join('; ')||'none'}`,`Can't-miss considered: ${cm.join('; ')||'none'}`);
   if(c.assessment)L.push(`Clinician assessment: ${c.assessment}`);
   L.push('','=== RESULTS / DATA ===');labLines(c).forEach(l=>L.push(l));
-  c.results.length?c.results.forEach(r=>L.push(`${r.type}: ${r.text}${r.interp?' {MY INDEPENDENT INTERPRETATION}':''}${r.discuss?' {DISCUSSED MANAGEMENT WITH EXTERNAL PHYSICIAN}':''}`)):L.push('(none)');
+  c.results.length?c.results.forEach(r=>L.push(`${r.type}: ${r.text}${resultAnnotation(r)}${r.interp?' {MY INDEPENDENT INTERPRETATION}':''}${r.discuss?' {DISCUSSED MANAGEMENT WITH EXTERNAL PHYSICIAN}':''}`)):L.push('(none)');
   L.push('','=== ED COURSE / INTERVENTIONS DISCUSSION (SYNTHESIZE, DO NOT COPY) ===');
   c.course.length?c.course.forEach(r=>L.push(`[${tfmt(r.ts)}] ${r.text}`)):L.push('(none)');
   const rs=activeRules(c).map(id=>evalRule(id,c.rules[id].v));
@@ -987,8 +987,14 @@ function ptLabel(c){const who=[c.age,c.sex].filter(Boolean).join(' ');return (c.
 function noteSections(c){
   const cc=c.cc?`Chief complaint: ${c.cc}`:'';
   const hpi=[hpiOpener(c),c.hpi.trim(),pmhText(c),c.historian.trim()?`History obtained in part from ${c.historian.trim()} (independent historian).`:''].filter(Boolean).join('\n');
-  const res=labLines(c).concat(c.results.map(r=>`${r.type}: ${r.text}`)).join('\n');
+  const res=labLines(c).concat(c.results.map(r=>`${r.type}: ${r.text}${resultAnnotation(r)}`)).join('\n');
   return [['HPI',hpi,'hpi'],['Review of Systems',rosText(c),'ros'],['Physical Exam',peText(c),'pe'],['Results',res,'results'],['MDM',c.mdm.trim(),'mdm'],['Procedures',c.procs.map(p=>p.text.trim()).join('\n\n'),'procs'],['Attending Attestation',attestText(c),'attest']].filter(x=>x[2]!=='attest'||(c.attest&&c.attest.on));
+}
+function resultAnnotation(r){
+  const notes=[];
+  if(r.reviewed)notes.push('Independently reviewed.');
+  if(r.type==='CXR'&&r.cxrDiscuss)notes.push('CXR findings discussed with the patient.');
+  return notes.length?' '+notes.join(' '):'';
 }
 function fullNote(c){return noteSections(c).filter(s=>s[1]).map(([h,b])=>h.toUpperCase()+':\n'+b).join('\n\n')}
 
@@ -1028,10 +1034,10 @@ function renderTab(){
   case 'ros':h=rosHTML(c);break;
   case 'pe':h=peHTML(c);break;
   case 'results':h=`${labsHTML(c)}<div class="sec"><h4>Other results (imaging, ECG, consults, free-text labs)</h4><div class="addrow"><div style="display:flex;flex-direction:column;gap:6px">
-      <select id="rType"><option>Labs</option><option>Imaging</option><option>ECG</option><option>POCUS</option><option>Vitals/Re-eval</option><option>Consult</option><option>External records</option><option>Other</option></select>
+      <select id="rType"><option>Labs</option><option>Imaging</option><option>CXR</option><option>ECG</option><option>POCUS</option><option>Vitals/Re-eval</option><option>Consult</option><option>External records</option><option>Other</option></select>
       <label class="chk" style="font-size:12px"><input type="checkbox" id="rInterp"> My independent interpretation</label>
       <label class="chk" style="font-size:12px"><input type="checkbox" id="rDiscuss"> Discussed management with external physician/QHP</label></div>
-      <div>${ta('t_res','_res','','e.g., "CBC and BMP unremarkable, troponin 0.01 then 0.01 at 3 hours." Or: "My read of the ECG: normal sinus rhythm at 78, no ST changes."')}<div class="row end"><button class="tb primary" id="btnAddRes">Add to chart</button></div></div></div></div>
+      <div><label class="chk" id="rCxrDiscussField" style="display:none"><input type="checkbox" id="rCxrDiscuss"> Discussed CXR findings with the patient</label>${ta('t_res','_res','','e.g., "CBC and BMP unremarkable, troponin 0.01 then 0.01 at 3 hours." Or: "My read of the ECG: normal sinus rhythm at 78, no ST changes."')}<div class="row end"><button class="tb primary" id="btnAddRes">Add to chart</button></div></div></div></div>
       <div class="sec"><h4>Results timeline</h4><div class="entries" id="resList"></div></div>`;break;
   case 'course':h=`<div class="sec"><h4>Added automatically</h4><div class="note" style="background:#eef8f2;border-color:#a9dcbf;color:#14532d">${courseAuto(c).map(x=>esc(x)).join('<br>')||'<span class="hint">Nothing yet. Enter vitals, tick labs, or add imaging/ECG and they will appear here.</span>'}</div></div><h4 style="margin:0 0 6px;font-size:13px;color:var(--link)">Interventions &amp; course (dictate)</h4><div class="note" style="margin-bottom:10px">Talk through what you gave or did, how the patient responded, and your thinking. The MDM uses this as synthesized information. It extracts the interventions and the response to treatment instead of pasting it as a block.</div>
       ${ta('t_course','_course','','e.g., "Gave aspirin 324 and one nitro, pain went from 6 to 2. Pulses equal, so I am less worried about dissection."')}
@@ -1096,7 +1102,7 @@ function labsHTML(c){
 }
 function renderEntries(){
   const c=active();
-  if($('#resList'))$('#resList').innerHTML=c.results.length?c.results.map(r=>`<div class="entry"><div class="meta2"><b>${esc(r.type)}</b>${tfmt(r.ts)}</div><div class="txt">${esc(r.text)}${r.interp||r.discuss?`<div class="flags">${r.interp?'✓ Independent interpretation ':''}${r.discuss?'✓ External discussion':''}</div>`:''}</div><button class="x" data-delres="${r.id}" title="Remove">×</button></div>`).join(''):'<div class="hint">No results yet. Add them as they come back; each is timestamped.</div>';
+  if($('#resList'))$('#resList').innerHTML=c.results.length?c.results.map(r=>`<div class="entry"><div class="meta2"><b>${esc(r.type)}</b>${tfmt(r.ts)}</div><div class="txt">${esc(r.text)}${r.interp||r.discuss?`<div class="flags">${r.interp?'✓ Independent interpretation ':''}${r.discuss?'✓ External discussion':''}</div>`:''}${r.cxrDiscuss?'<div class="flags">✓ CXR findings discussed with patient</div>':''}<button type="button" class="tb" data-reviewres="${esc(r.id)}" aria-pressed="${Boolean(r.reviewed)}">${r.reviewed?'✓ Independently reviewed':'Independently reviewed'}</button></div><button class="x" data-delres="${r.id}" title="Remove">×</button></div>`).join(''):'<div class="hint">No results yet. Add them as they come back; each is timestamped.</div>';
   if($('#courseList'))$('#courseList').innerHTML=c.course.length?c.course.map(r=>`<div class="entry"><div class="meta2"><b>ED course</b>${tfmt(r.ts)}</div><div class="txt">${esc(r.text)}</div><button class="x" data-delcourse="${r.id}" title="Remove">×</button></div>`).join(''):'<div class="hint">Nothing yet.</div>';
 }
 function renderProcs(){
@@ -1203,6 +1209,11 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
   const c=active();if(!c)return;const t=e.target;
   if(t.dataset.labon){const pn=t.dataset.labon;c.labs=c.labs||{};c.labs[pn]=c.labs[pn]||{f:{},v:{}};c.labs[pn].on=t.checked;save();const sc=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=sc;renderTabs();schedulePreview();return}
+  if(t.id==='rType'){
+    $('#rCxrDiscussField').style.display=t.value==='CXR'?'':'none';
+    if(t.value!=='CXR')$('#rCxrDiscuss').checked=false;
+    return;
+  }
   if(t.id==='pmhSel'&&t.value){addPmh(c,t.value);return}
   if(t.id==='profAdd'&&t.value){c.profiles.push(t.value);c.profAuto=false;suggestRules(c);save();renderDdx();return}
   if(t.id==='ruleAdd'&&t.value){c.rules[t.value]={on:true,v:[]};save();renderRules();renderTabs();return}
@@ -1228,6 +1239,14 @@ $('#builder').addEventListener('click',e=>{
   if(ds.profdel){c.profiles=c.profiles.filter(k=>k!==ds.profdel);c.profAuto=false;Object.keys(c.rules).forEach(id=>{if(!c.rules[id].on&&c.rules[id].sug&&!c.profiles.some(k=>PROFILES[k].rules.includes(id)))delete c.rules[id]});save();renderDdx();return}
   if(ds.ruleon){c.rules[ds.ruleon].on=true;save();renderRules();renderTabs();return}
   if(ds.ruleoff){delete c.rules[ds.ruleoff];save();renderRules();renderTabs();return}
+  if(ds.reviewres){
+    const result=c.results.find(r=>r.id===ds.reviewres);
+    if(!result)return;
+    result.reviewed=!result.reviewed;
+    save();renderEntries();schedulePreview();
+    $('#resList').querySelector(`[data-reviewres="${CSS.escape(result.id)}"]`)?.focus();
+    return;
+  }
   if(ds.delres){ask('Remove this result entry?',()=>{c.results=c.results.filter(r=>r.id!==ds.delres);save();renderEntries();renderTabs();refreshLevel();schedulePreview()});return}
   if(ds.delcourse){ask('Remove this ED course entry?',()=>{c.course=c.course.filter(r=>r.id!==ds.delcourse);save();renderEntries();renderTabs()});return}
   if(ds.delproc){ask('Remove this procedure note?',()=>{c.procs=c.procs.filter(p=>p.id!==ds.delproc);syncCC(c);save();renderProcs();renderTabs();schedulePreview()});return}
@@ -1239,8 +1258,8 @@ $('#builder').addEventListener('click',e=>{
     case 'btnPmhAdd':{const v=$('#pmhNew').value.trim();if(v)addPmh(c,v);break}
     case 'btnDdxAdd':{const v=$('#ddxNew').value.trim();if(!v)return;if(!c.ddxAdd.includes(v))c.ddxAdd.push(v);c.ddxOff=c.ddxOff.filter(x=>x!==v);save();renderDdx();break}
     case 'btnAddRes':{const txt=$('#t_res').value.trim();if(!txt){toast('Enter or dictate a result first');return}
-      stopMic();c.results.push({id:uid(),ts:Date.now(),type:$('#rType').value,text:txt,interp:$('#rInterp').checked,discuss:$('#rDiscuss').checked});
-      $('#t_res').value='';$('#rInterp').checked=false;$('#rDiscuss').checked=false;
+      stopMic();c.results.push({id:uid(),ts:Date.now(),type:$('#rType').value,text:txt,interp:$('#rInterp').checked,discuss:$('#rDiscuss').checked,cxrDiscuss:$('#rType').value==='CXR'&&$('#rCxrDiscuss').checked});
+      $('#t_res').value='';$('#rInterp').checked=false;$('#rDiscuss').checked=false;$('#rCxrDiscuss').checked=false;
       if(c.status==='awaiting'){c.status='active';const s=document.querySelector('[data-f="status"]');if(s)s.value='active'}
       autoCode(c);
       save();renderEntries();renderTabs();refreshLevel();schedulePreview();toast(c.mdm?'Added. Regenerate the MDM to include it.':'Result added');break}
