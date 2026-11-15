@@ -261,7 +261,7 @@ function newChart(){
     attest:{on:false,type:'saw',resident:'',attending:'',custom:'',additions:'',procOn:true,presence:'entire',ccOn:false,ccMin:0},hpi:'',historian:'',labs:{},labsReviewed:false,pmh:[],pmhNone:false,results:[],course:[],assessment:'',procs:[],
     vitals:{bp:'',hr:'',rr:'',temp:'',spo2:'',pain:''},
     ros:{items:{},sysNeg:{},allNeg:false,reason:'',comment:''},
-    pe:{f:{},details:{},comment:''},
+    pe:{f:{},details:{},abnormalDetails:{},comment:''},
     profiles:[],profAuto:true,ddxOff:[],ddxAdd:[],rules:{},
     dispo:{type:'',condition:'',consults:'',followup:'',precautions:'',sdm:false,considered:false,notes:'',impression:''},
     opts:{rules:'auto',rb:'auto',strat:'auto'},
@@ -445,10 +445,12 @@ function migrateExamDetails(pe){
   for(const [system,findings] of Object.entries(PE)){
     const details=[];
     findings.forEach(([label],i)=>{
-      const key=system+'|'+i+'|d';
-      const detail=(pe.f[key]||'').trim();
-      if(detail)details.push(label+': '+detail);
-      delete pe.f[key];
+      const key=system+'|'+i;
+      const legacyKey=key+'|d';
+      const detail=(pe.f[legacyKey]||'').trim();
+      if(detail&&pe.f[key]==='a')pe.abnormalDetails[key]??=detail;
+      else if(detail)details.push(label+': '+detail);
+      delete pe.f[legacyKey];
     });
     if(details.length)pe.details[system]=[pe.details[system],...details].filter(Boolean).join('\n');
   }
@@ -478,8 +480,11 @@ function peText(c){
   const f=(c.pe&&c.pe.f)||{},out=[];const vt=vitalsText(c);if(vt)out.push(vt);
   Object.keys(PE).forEach(sys=>{
     const parts=PE[sys].map(([,normal,abnormal],i)=>{
-      const status=f[sys+'|'+i];
-      return status==='n'?normal:status==='a'?abnormal:'';
+      const key=sys+'|'+i;
+      if(f[key]==='n')return normal;
+      if(f[key]!=='a')return '';
+      const detail=(c.pe?.abnormalDetails?.[key]||'').trim();
+      return detail?abnormal+': '+detail:abnormal;
     }).filter(Boolean);
     const detail=(c.pe?.details?.[sys]||'').trim();
     const lines=[];
@@ -1168,7 +1173,7 @@ function rosHTML(c){
 function peHTML(c){
   const f=c.pe.f,v=c.vitals;
   const sys=Object.keys(PE).map(s=>{const allN=PE[s].every((_,i)=>f[s+'|'+i]==='n');return `<div class="sys"><div class="sh"><b>${esc(s)}</b><label><input type="checkbox" data-pesys="${esc(s)}" ${allN?'checked':''}>nml</label></div>
-     ${PE[s].map((it,i)=>{const k=s+'|'+i,val=f[k],cls=val==='n'?'nrm':val==='a'?'abn':'';return `<div class="ri ${cls}" title="${esc(val==='a'?it[2]:it[1])}"><div class="lab" data-pe="${esc(k)}" data-v="n"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(it[0])}</div><button class="mn" data-pe="${esc(k)}" data-v="a" title="Abnormal">✗</button></div>`;}).join('')}
+     ${PE[s].map((it,i)=>{const k=s+'|'+i,val=f[k],cls=val==='n'?'nrm':val==='a'?'abn':'';return `<div class="ri ${cls}" title="${esc(val==='a'?it[2]:it[1])}"><div class="lab" data-pe="${esc(k)}" data-v="n"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(it[0])}</div><button class="mn" data-pe="${esc(k)}" data-v="a" title="Abnormal">✗</button></div>${val==='a'?`<label class="fld">Abnormal finding details<textarea rows="2" id="pe_abnormal_${esc(k)}" data-f="pe.abnormalDetails.${esc(k)}" aria-label="${esc(s+' — '+it[0]+' details')}"></textarea></label>`:''}`;}).join('')}
      <label class="fld" style="margin-top:6px">Additional findings<textarea rows="2" data-f="pe.details.${esc(s)}" aria-label="${esc(s+' — Additional findings')}"></textarea></label></div>`}).join('');
   return `<div class="sec"><h4>Vitals</h4><div class="grid6">${[['bp','BP','128/76'],['hr','HR','88'],['rr','RR','16'],['temp','Temp','98.6 F'],['spo2','SpO2 %','98'],['pain','Pain /10','6']].map(([k,l,p])=>`<div class="fld"><label>${l}</label><input data-f="vitals.${k}" placeholder="${p}"></div>`).join('')}</div></div>
     <div class="row" style="margin-bottom:10px"><button class="tb" id="peAllNormal">Normal exam (all unmarked items except GU)</button><button class="tb" id="peClear">Clear exam</button><div class="spacer"></div>
@@ -1334,7 +1339,17 @@ $('#builder').addEventListener('click',e=>{
   if(ds.mic){toggleMic(ds.mic);return}
   if(ds.ros){const k=ds.ros,cur=c.ros.items[k];if(cur===ds.v)delete c.ros.items[k];else c.ros.items[k]=ds.v;save();const scroll=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=scroll;schedulePreview();
     if(c.profAuto){const d=detectProfiles(c);if(d.join()!==c.profiles.join()){c.profiles=d;suggestRules(c);save()}}return}
-  if(ds.pe){const k=ds.pe,cur=c.pe.f[k];if(cur===ds.v)delete c.pe.f[k];else c.pe.f[k]=ds.v;save();const scroll=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=scroll;schedulePreview();return}
+  if(ds.pe){
+    const k=ds.pe,cur=c.pe.f[k];
+    if(cur===ds.v)delete c.pe.f[k];else c.pe.f[k]=ds.v;
+    save();
+    const scroll=$('#tabBody').scrollTop;
+    renderTab();
+    $('#tabBody').scrollTop=scroll;
+    if(c.pe.f[k]==='a')document.getElementById('pe_abnormal_'+k)?.focus();
+    schedulePreview();
+    return;
+  }
   if(e.target.dataset.ddxdel){c.ddxAdd=c.ddxAdd.filter(x=>x!==e.target.dataset.ddxdel);save();renderDdx();return}
   if(ds.lab){const [pn,n]=ds.lab.split('|'),P=c.labs[pn];if(P.f[n]===ds.v){delete P.f[n];delete P.v[n]}else P.f[n]=ds.v;save();const sc=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=sc;schedulePreview();if(ds.v==='a'&&P.f[n]==='a')setTimeout(()=>document.querySelector(`[data-labval="${CSS.escape(ds.lab)}"]`)?.focus(),20);return}
   if(ds.laball){const pn=ds.laball,P=c.labs[pn];LAB_PANELS[pn].forEach(([n])=>{if(P.f[n]!=='a')P.f[n]='n'});save();const sc=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=sc;schedulePreview();return}
@@ -1358,7 +1373,7 @@ $('#builder').addEventListener('click',e=>{
     case 'rosAllNeg':c.ros.allNeg=!c.ros.allNeg;save();renderTab();schedulePreview();break;
     case 'rosClear':ask('Clear the entire ROS?',()=>{c.ros={items:{},sysNeg:{},allNeg:false,reason:'',comment:''};save();renderTab();schedulePreview();});break;
     case 'peAllNormal':Object.keys(PE).filter(s=>s!=='Genitourinary (GU)').forEach(s=>PE[s].forEach((_,i)=>{const k=s+'|'+i;if(!c.pe.f[k])c.pe.f[k]='n'}));save();renderTab();schedulePreview();break;
-    case 'peClear':ask('Clear the entire exam?',()=>{c.pe.f={};c.pe.details={};save();renderTab();schedulePreview();});break;
+    case 'peClear':ask('Clear the entire exam?',()=>{c.pe.f={};c.pe.details={};c.pe.abnormalDetails={};save();renderTab();schedulePreview();});break;
     case 'btnPmhAdd':{const v=$('#pmhNew').value.trim();if(v)addPmh(c,v);break}
     case 'btnDdxAdd':{const v=$('#ddxNew').value.trim();if(!v)return;if(!c.ddxAdd.includes(v))c.ddxAdd.push(v);c.ddxOff=c.ddxOff.filter(x=>x!==v);save();renderDdx();break}
     case 'btnAddImaging':
