@@ -861,7 +861,7 @@ function writeMDM(c){
     else if(wor&&!imp)E.push('On reassessment, symptoms did not adequately respond to initial treatment, prompting further management.');
     else if(imp&&wor)E.push('Response to treatment was mixed on serial reassessment.');
     const narrative=[...c.course.map(r=>({ts:r.ts,t:r.text})),...reeval.map(r=>({ts:r.ts,t:'Reassessment: '+r.text}))].sort((a,b)=>a.ts-b.ts)
-      .map(x=>`${tfmt(x.ts)}: ${sentence(x.t.replace(/^(i|we) /i,m=>m))}`);
+      .map(x=>sentence(x.t));
     if(narrative.length)E.push('Course:\n'+narrative.join('\n'));
     if(meds.length&&!imp&&!wor)gaps.push('Response to treatment is not documented (e.g., "pain improved from 8 to 2 after...").');
     S.push('ED COURSE AND RESPONSE TO INTERVENTIONS:\n'+[autoC.join('\n'),E.join(' ').replace(/^Course:\n/,'').replace(' Course:\n','\n')].filter(Boolean).join('\n'));
@@ -937,7 +937,7 @@ function chartPacket(c){
   L.push('','=== RESULTS / DATA ===');labLines(c).forEach(l=>L.push(l));
   c.results.length?c.results.forEach(r=>L.push(`${r.type}: ${r.text}${resultAnnotation(r)}${r.interp?' {MY INDEPENDENT INTERPRETATION}':''}${r.discuss?' {DISCUSSED MANAGEMENT WITH EXTERNAL PHYSICIAN}':''}`)):L.push('(none)');
   L.push('','=== ED COURSE / INTERVENTIONS DISCUSSION (SYNTHESIZE, DO NOT COPY) ===');
-  c.course.length?c.course.forEach(r=>L.push(`[${tfmt(r.ts)}] ${r.text}`)):L.push('(none)');
+  c.course.length?c.course.forEach(r=>L.push(r.text)):L.push('(none)');
   const rs=activeRules(c).map(id=>evalRule(id,c.rules[id].v));
   L.push('','=== DECISION RULES CALCULATED BY CLINICIAN ===',rs.length?rs.map(r=>r.text+(r.detail?' ('+r.detail+')':'')).join('\n'):'(none)');
   L.push('','=== DISPOSITION ===',`Disposition: ${d.type||'pending'} | Condition: ${d.condition||'n/a'} | Impression: ${d.impression||'n/a'}`,`Consults/accepting: ${d.consults||'n/a'} | Follow-up: ${d.followup||'n/a'} | Return precautions: ${d.precautions||'n/a'}`,`Shared decision-making: ${d.sdm?'YES':'no'} | Admission/observation considered: ${d.considered?'YES':'no'}`,`Clinician disposition notes: ${d.notes||'n/a'}`,`Critical care time: ${c.coding.ccMin||0} min`);
@@ -1155,7 +1155,7 @@ function labsHTML(c){
 function renderEntries(){
   const c=active();
   if($('#resList'))$('#resList').innerHTML=c.results.length?c.results.map(r=>`<div class="entry"><div class="meta2"><b>${esc(r.type)}</b>${tfmt(r.ts)}</div><div class="txt">${esc(r.text)}${r.interp||r.discuss?`<div class="flags">${r.interp?'✓ Independent interpretation ':''}${r.discuss?'✓ External discussion':''}</div>`:''}${r.cxrDiscuss?'<div class="flags">✓ CXR findings discussed with patient</div>':''}<button type="button" class="tb" data-reviewres="${esc(r.id)}" aria-pressed="${Boolean(r.reviewed)}">${r.reviewed?'✓ Independently reviewed':'Independently reviewed'}</button></div><button class="x" data-delres="${r.id}" title="Remove">×</button></div>`).join(''):'<div class="hint">No results yet. Add them as they come back; each is timestamped.</div>';
-  if($('#courseList'))$('#courseList').innerHTML=c.course.length?c.course.map(r=>`<div class="entry"><div class="meta2"><b>ED course</b>${tfmt(r.ts)}</div><div class="txt">${esc(r.text)}</div><button class="x" data-delcourse="${r.id}" title="Remove">×</button></div>`).join(''):'<div class="hint">Nothing yet.</div>';
+  if($('#courseList'))$('#courseList').innerHTML=c.course.length?c.course.map(r=>`<div class="entry"><div class="meta2"><b>ED course</b></div><div class="txt">${esc(r.text)}</div><button class="x" data-delcourse="${r.id}" title="Remove">×</button></div>`).join(''):'<div class="hint">Nothing yet.</div>';
 }
 function renderProcs(){
   const c=active(),b=$('#procList');if(!b)return;
