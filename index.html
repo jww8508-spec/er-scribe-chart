@@ -261,15 +261,14 @@ function newChart(){
     attest:{on:false,type:'saw',resident:'',attending:'',custom:'',additions:'',procOn:true,presence:'entire',ccOn:false,ccMin:0},hpi:'',historian:'',labs:{},labsReviewed:false,pmh:[],pmhNone:false,results:[],course:[],assessment:'',procs:[],
     vitals:{bp:'',hr:'',rr:'',temp:'',spo2:'',pain:''},
     ros:{items:{},sysNeg:{},allNeg:false,reason:'',comment:''},
-    pe:{f:{},comment:''},
+    pe:{f:{},details:{},comment:''},
     profiles:[],profAuto:true,ddxOff:[],ddxAdd:[],rules:{},
     dispo:{type:'',condition:'',consults:'',followup:'',precautions:'',sdm:false,considered:false,notes:'',impression:''},
     opts:{rules:'auto',rb:'auto',strat:'auto'},
     mdm:'',mdmGen:'',gaps:[],genAt:null,src:'',
     coding:{problems:'',tests:0,notes:0,historian:false,interp:false,discuss:false,risk:'',ccMin:0,auto:false,locked:false,why:{},manual:{}}};
 }
-function migrate(c){const n=newChart();for(const k in n){if(c[k]===undefined)c[k]=n[k];else if(n[k]&&typeof n[k]==='object'&&!Array.isArray(n[k]))for(const j in n[k])if(c[k][j]===undefined)c[k][j]=n[k][j]}return c}
-charts=charts.map(migrate);charts.forEach(c=>{if(c.tab==='dispo')c.tab='mdm';['impression','consults','followup','precautions','notes'].forEach(k=>c.dispo[k]='')});
+function migrate(c){const n=newChart();for(const k in n){if(c[k]===undefined)c[k]=n[k];else if(n[k]&&typeof n[k]==='object'&&!Array.isArray(n[k]))for(const j in n[k])if(c[k][j]===undefined)c[k][j]=n[k][j]}migrateExamDetails(c.pe);return c}
 function purgeOld(){
   const h=+settings.purgeHours;if(!h)return;
   const cut=Date.now()-h*3600e3,n=charts.length;charts=charts.filter(c=>c.created>=cut);
@@ -442,6 +441,19 @@ const PE={
  'Neurological':[['Mental status','Alert and oriented x4','Altered mental status'],['Cranial nerves','Cranial nerves II–XII grossly intact','Cranial nerve deficit'],['Motor','Strength 5/5 and symmetric','Focal weakness'],['Sensation','Sensation intact','Sensory deficit'],['Speech','Speech normal','Speech abnormal'],['Coordination','Normal finger-to-nose','Dysmetria / ataxia']],
  'Psychiatric':[['Mood','Normal mood','Abnormal mood'],['Behavior','Behavior appropriate','Agitated / abnormal behavior'],['Affect','Normal affect','Abnormal affect (flat / blunted / labile / anxious)'],['Depression','No signs of depression','Depressed'],['Suicidal ideation','Denies suicidal ideation','Endorses suicidal ideation'],['Homicidal ideation','Denies homicidal ideation','Endorses homicidal ideation']]
 };
+function migrateExamDetails(pe){
+  for(const [system,findings] of Object.entries(PE)){
+    const details=[];
+    findings.forEach(([label],i)=>{
+      const key=system+'|'+i+'|d';
+      const detail=(pe.f[key]||'').trim();
+      if(detail)details.push(label+': '+detail);
+      delete pe.f[key];
+    });
+    if(details.length)pe.details[system]=[pe.details[system],...details].filter(Boolean).join('\n');
+  }
+}
+charts=charts.map(migrate);charts.forEach(c=>{if(c.tab==='dispo')c.tab='mdm';['impression','consults','followup','precautions','notes'].forEach(k=>c.dispo[k]='')});
 function rosPosText(c){const r=c.ros||{items:{}};const ros=Object.keys(r.items||{}).filter(k=>r.items[k]==='pos').map(k=>k.split('|')[1]).join(' ');const f=(c.pe&&c.pe.f)||{};const pe=Object.keys(f).filter(k=>f[k]==='a'&&k.split('|').length===2).map(k=>{const[sys,i]=k.split('|');return PE[sys]&&PE[sys][+i]?PE[sys][+i][2]:''}).join(' ');return ros+' '+pe}
 function rosText(c){
   const r=c.ros;if(!r)return'';
@@ -465,14 +477,15 @@ function vitalsText(c){const v=c.vitals||{},p=[];if(v.bp)p.push('BP '+v.bp);if(v
 function peText(c){
   const f=(c.pe&&c.pe.f)||{},out=[];const vt=vitalsText(c);if(vt)out.push(vt);
   Object.keys(PE).forEach(sys=>{
-    const parts=PE[sys].map(([label,normal,abnormal],i)=>{
-      const key=sys+'|'+i;
-      const status=f[key];
-      const detail=(f[key+'|d']||'').trim();
-      const finding=status==='n'?normal:status==='a'?abnormal:'';
-      return detail?(finding||label)+': '+detail:finding;
+    const parts=PE[sys].map(([,normal,abnormal],i)=>{
+      const status=f[sys+'|'+i];
+      return status==='n'?normal:status==='a'?abnormal:'';
     }).filter(Boolean);
-    if(parts.length)out.push(`${sys}: ${parts.join('. ')}.`);
+    const detail=(c.pe?.details?.[sys]||'').trim();
+    const lines=[];
+    if(parts.length)lines.push(parts.join('. ')+'.');
+    if(detail)lines.push(detail);
+    if(lines.length)out.push(sys+': '+lines.join(' '));
   });
   if(c.pe&&c.pe.comment&&c.pe.comment.trim())out.push(c.pe.comment.trim());
   return out.join('\n');
@@ -1140,7 +1153,8 @@ function rosHTML(c){
 function peHTML(c){
   const f=c.pe.f,v=c.vitals;
   const sys=Object.keys(PE).map(s=>{const allN=PE[s].every((_,i)=>f[s+'|'+i]==='n');return `<div class="sys"><div class="sh"><b>${esc(s)}</b><label><input type="checkbox" data-pesys="${esc(s)}" ${allN?'checked':''}>nml</label></div>
-     ${PE[s].map((it,i)=>{const k=s+'|'+i,val=f[k],cls=val==='n'?'nrm':val==='a'?'abn':'';return `<div class="ri ${cls}" title="${esc(val==='a'?it[2]:it[1])}"><div class="lab" data-pe="${esc(k)}" data-v="n"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(it[0])}</div><button class="mn" data-pe="${esc(k)}" data-v="a" title="Abnormal">✗</button></div><input class="pedet" type="text" data-pedet="${esc(k)}" value="${esc(f[k+'|d']||'')}" aria-label="${esc(s+' — '+it[0]+' details')}" placeholder="Add details" style="width:100%;margin:-1px 0 4px;border:1px solid ${val==='a'?'var(--abnb)':'var(--line)'};border-radius:4px;padding:3px 6px;font-size:12px">`;}).join('')}</div>`}).join('');
+     ${PE[s].map((it,i)=>{const k=s+'|'+i,val=f[k],cls=val==='n'?'nrm':val==='a'?'abn':'';return `<div class="ri ${cls}" title="${esc(val==='a'?it[2]:it[1])}"><div class="lab" data-pe="${esc(k)}" data-v="n"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(it[0])}</div><button class="mn" data-pe="${esc(k)}" data-v="a" title="Abnormal">✗</button></div>`;}).join('')}
+     <label class="fld" style="margin-top:6px">Additional findings<textarea rows="2" data-f="pe.details.${esc(s)}" aria-label="${esc(s+' — Additional findings')}"></textarea></label></div>`}).join('');
   return `<div class="sec"><h4>Vitals</h4><div class="grid6">${[['bp','BP','128/76'],['hr','HR','88'],['rr','RR','16'],['temp','Temp','98.6 F'],['spo2','SpO2 %','98'],['pain','Pain /10','6']].map(([k,l,p])=>`<div class="fld"><label>${l}</label><input data-f="vitals.${k}" placeholder="${p}"></div>`).join('')}</div></div>
     <div class="row" style="margin-bottom:10px"><button class="tb" id="peAllNormal">Normal exam (all unmarked items except GU)</button><button class="tb" id="peClear">Clear exam</button><div class="spacer"></div>
     <div class="legendrow"><span><span class="sw" style="background:var(--nrm);border-color:var(--nrmb)"></span>Click name = normal</span><span><span class="sw" style="background:var(--abn);border-color:var(--abnb)"></span>Click ✗ = abnormal</span></div></div>
@@ -1252,7 +1266,6 @@ document.addEventListener('input',e=>{
   if(el.dataset.pextra){const p=c.procs.find(x=>x.id===el.dataset.pextra);if(p){p.extra=el.value;p.text=procText(p);save();schedulePreview()}return}
   if(el.dataset.proc){const p=c.procs.find(x=>x.id===el.dataset.proc);if(p){p.text=el.value;save();schedulePreview()}return}
   if(el.dataset.labval){const [pn,n]=el.dataset.labval.split('|');c.labs[pn].v[n]=el.value;save();schedulePreview();return}
-  if(el.dataset.pedet){c.pe.f[el.dataset.pedet+'|d']=el.value;save();schedulePreview();return}
   const f=el.dataset?.f;if(!f||f.startsWith('_'))return;
   let v=el.type==='checkbox'?el.checked:el.value;if(el.dataset.type==='num')v=Math.max(0,+v||0);
   setPath(c,f,v);
@@ -1290,7 +1303,7 @@ $('#builder').addEventListener('click',e=>{
   if(ds.mic){toggleMic(ds.mic);return}
   if(ds.ros){const k=ds.ros,cur=c.ros.items[k];if(cur===ds.v)delete c.ros.items[k];else c.ros.items[k]=ds.v;save();const scroll=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=scroll;schedulePreview();
     if(c.profAuto){const d=detectProfiles(c);if(d.join()!==c.profiles.join()){c.profiles=d;suggestRules(c);save()}}return}
-  if(ds.pe){const k=ds.pe,cur=c.pe.f[k];if(cur===ds.v)delete c.pe.f[k];else c.pe.f[k]=ds.v;save();const scroll=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=scroll;schedulePreview();if(ds.v==='a'&&c.pe.f[k]==='a')setTimeout(()=>document.querySelector(`[data-pedet="${CSS.escape(k)}"]`)?.focus(),20);return}
+  if(ds.pe){const k=ds.pe,cur=c.pe.f[k];if(cur===ds.v)delete c.pe.f[k];else c.pe.f[k]=ds.v;save();const scroll=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=scroll;schedulePreview();return}
   if(e.target.dataset.ddxdel){c.ddxAdd=c.ddxAdd.filter(x=>x!==e.target.dataset.ddxdel);save();renderDdx();return}
   if(ds.lab){const [pn,n]=ds.lab.split('|'),P=c.labs[pn];if(P.f[n]===ds.v){delete P.f[n];delete P.v[n]}else P.f[n]=ds.v;save();const sc=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=sc;schedulePreview();if(ds.v==='a'&&P.f[n]==='a')setTimeout(()=>document.querySelector(`[data-labval="${CSS.escape(ds.lab)}"]`)?.focus(),20);return}
   if(ds.laball){const pn=ds.laball,P=c.labs[pn];LAB_PANELS[pn].forEach(([n])=>{if(P.f[n]!=='a')P.f[n]='n'});save();const sc=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=sc;schedulePreview();return}
@@ -1314,7 +1327,7 @@ $('#builder').addEventListener('click',e=>{
     case 'rosAllNeg':c.ros.allNeg=!c.ros.allNeg;save();renderTab();schedulePreview();break;
     case 'rosClear':ask('Clear the entire ROS?',()=>{c.ros={items:{},sysNeg:{},allNeg:false,reason:'',comment:''};save();renderTab();schedulePreview();});break;
     case 'peAllNormal':Object.keys(PE).filter(s=>s!=='Genitourinary (GU)').forEach(s=>PE[s].forEach((_,i)=>{const k=s+'|'+i;if(!c.pe.f[k])c.pe.f[k]='n'}));save();renderTab();schedulePreview();break;
-    case 'peClear':ask('Clear the entire exam?',()=>{c.pe.f={};save();renderTab();schedulePreview();});break;
+    case 'peClear':ask('Clear the entire exam?',()=>{c.pe.f={};c.pe.details={};save();renderTab();schedulePreview();});break;
     case 'btnPmhAdd':{const v=$('#pmhNew').value.trim();if(v)addPmh(c,v);break}
     case 'btnDdxAdd':{const v=$('#ddxNew').value.trim();if(!v)return;if(!c.ddxAdd.includes(v))c.ddxAdd.push(v);c.ddxOff=c.ddxOff.filter(x=>x!==v);save();renderDdx();break}
     case 'btnAddImaging':
