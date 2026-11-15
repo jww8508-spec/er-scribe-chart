@@ -990,6 +990,41 @@ function noteSections(c){
   const res=labLines(c).concat(c.results.map(r=>`${r.type}: ${r.text}${resultAnnotation(r)}`)).join('\n');
   return [['HPI',hpi,'hpi'],['Review of Systems',rosText(c),'ros'],['Physical Exam',peText(c),'pe'],['Results',res,'results'],['MDM',c.mdm.trim(),'mdm'],['Procedures',c.procs.map(p=>p.text.trim()).join('\n\n'),'procs'],['Attending Attestation',attestText(c),'attest']].filter(x=>x[2]!=='attest'||(c.attest&&c.attest.on));
 }
+const IMAGING_STUDIES={
+  CXR:['Chest x-ray (1 view)','Chest x-ray (2 views)','Chest x-ray (other)'],
+  CT:['CT head','CT cervical spine','CT chest','CT angiogram chest','CT abdomen/pelvis','CTA head/neck','CT (other)'],
+  'Formal US':['Ultrasound RUQ','Ultrasound pelvic','Ultrasound obstetric','Ultrasound renal','Ultrasound appendix','Ultrasound venous duplex','Ultrasound (other)'],
+};
+const IMAGING_FINDINGS={
+  CXR:['No acute cardiopulmonary abnormality','Focal airspace opacity','Pleural effusion','Pneumothorax','Pulmonary edema','Atelectasis'],
+  CT:['No acute abnormality','Indeterminate finding','Incidental finding'],
+  'Formal US':['No acute abnormality','Indeterminate finding','Incidental finding'],
+};
+const STUDY_FINDINGS={
+  'CT head':['Intracranial hemorrhage','Mass effect'],
+  'CT cervical spine':['Acute fracture','Malalignment'],
+  'CT chest':['Pulmonary nodule','Pleural effusion','Airspace opacity'],
+  'CT angiogram chest':['No pulmonary embolism','Pulmonary embolism'],
+  'CT abdomen/pelvis':['Appendicitis','Bowel obstruction','Ureteral stone','Hydronephrosis'],
+  'CTA head/neck':['Large vessel occlusion','Stenosis','Dissection'],
+  'Ultrasound RUQ':['Cholelithiasis','Findings of cholecystitis','Biliary duct dilation'],
+  'Ultrasound pelvic':['Ovarian cyst','Adnexal mass','Pelvic free fluid'],
+  'Ultrasound obstetric':['Intrauterine pregnancy','Pregnancy location indeterminate'],
+  'Ultrasound renal':['Hydronephrosis','Renal stone'],
+  'Ultrasound appendix':['Findings of appendicitis','Appendix not visualized'],
+  'Ultrasound venous duplex':['No deep venous thrombosis','Deep venous thrombosis'],
+};
+function updateImagingOptions(resetStudy){
+  const modality=$('#imgModality').value;
+  const study=$('#imgStudy'), finding=$('#imgFinding');
+  if(resetStudy){
+    study.replaceChildren(new Option('Select study',''),...IMAGING_STUDIES[modality].map(x=>new Option(x)));
+    $('#imgCxrDiscuss').checked=false;
+  }
+  const options=[...IMAGING_FINDINGS[modality],...(STUDY_FINDINGS[study.value]||[]),'Other findings'];
+  finding.replaceChildren(new Option('Select finding',''),...options.map(x=>new Option(x)));
+  $('#imgCxrDiscussField').style.display=modality==='CXR'?'':'none';
+}
 function resultAnnotation(r){
   const notes=[];
   if(r.reviewed)notes.push('Independently reviewed.');
@@ -1033,7 +1068,17 @@ function renderTab(){
     <div class="fld" style="max-width:440px"><label>Independent historian (who gave history besides the patient)</label><input data-f="historian" placeholder="e.g., wife, EMS, nursing home staff"></div>`;break;
   case 'ros':h=rosHTML(c);break;
   case 'pe':h=peHTML(c);break;
-  case 'results':h=`${labsHTML(c)}<div class="sec"><h4>Other results (imaging, ECG, consults, free-text labs)</h4><div class="addrow"><div style="display:flex;flex-direction:column;gap:6px">
+  case 'results':h=`${labsHTML(c)}
+      <div class="sec"><h4>Imaging</h4>
+        <div class="grid3">
+          <label class="fld">Modality<select id="imgModality">${Object.keys(IMAGING_STUDIES).map(x=>`<option>${x}</option>`).join('')}</select></label>
+          <label class="fld">Study<select id="imgStudy"></select></label>
+          <label class="fld">Finding<select id="imgFinding"></select></label>
+        </div>
+        <label class="chk" id="imgCxrDiscussField"><input type="checkbox" id="imgCxrDiscuss"> Discussed CXR findings with the patient</label>
+        ${ta('t_imaging','_imaging','','Report details, additional findings, or specific study name for an Other selection')}
+        <div class="row end"><button type="button" class="tb primary" id="btnAddImaging">Add imaging result</button></div>
+      </div><div class="sec"><h4>Other results (imaging, ECG, consults, free-text labs)</h4><div class="addrow"><div style="display:flex;flex-direction:column;gap:6px">
       <select id="rType"><option>Labs</option><option>Imaging</option><option>CXR</option><option>ECG</option><option>POCUS</option><option>Vitals/Re-eval</option><option>Consult</option><option>External records</option><option>Other</option></select>
       <label class="chk" style="font-size:12px"><input type="checkbox" id="rInterp"> My independent interpretation</label>
       <label class="chk" style="font-size:12px"><input type="checkbox" id="rDiscuss"> Discussed management with external physician/QHP</label></div>
@@ -1062,7 +1107,9 @@ function renderTab(){
       <div class="result" id="billResult"></div>
       <div class="hint" style="margin-top:8px">MDM level = the level met or exceeded by 2 of the 3 elements. 99282 Straightforward · 99283 Low · 99284 Moderate · 99285 High. Critical care (99291/99292) is time-based (≥30 min). Follow your organization's coding policies and payer rules.</div>`;break;
   }
-  B.innerHTML=h;bindValues(B);
+  B.innerHTML=h;
+  if(c.tab==='results')updateImagingOptions(true);
+  bindValues(B);
   if(c.tab==='results'||c.tab==='course')renderEntries();
   if(c.tab==='rules')renderRules();
   if(c.tab==='mdm'){renderDdx();renderGaps()}
@@ -1209,6 +1256,7 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
   const c=active();if(!c)return;const t=e.target;
   if(t.dataset.labon){const pn=t.dataset.labon;c.labs=c.labs||{};c.labs[pn]=c.labs[pn]||{f:{},v:{}};c.labs[pn].on=t.checked;save();const sc=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=sc;renderTabs();schedulePreview();return}
+  if(t.id==='imgModality'||t.id==='imgStudy'){updateImagingOptions(t.id==='imgModality');return}
   if(t.id==='rType'){
     $('#rCxrDiscussField').style.display=t.value==='CXR'?'':'none';
     if(t.value!=='CXR')$('#rCxrDiscuss').checked=false;
@@ -1257,9 +1305,22 @@ $('#builder').addEventListener('click',e=>{
     case 'peClear':ask('Clear the entire exam?',()=>{c.pe.f={};save();renderTab();schedulePreview();});break;
     case 'btnPmhAdd':{const v=$('#pmhNew').value.trim();if(v)addPmh(c,v);break}
     case 'btnDdxAdd':{const v=$('#ddxNew').value.trim();if(!v)return;if(!c.ddxAdd.includes(v))c.ddxAdd.push(v);c.ddxOff=c.ddxOff.filter(x=>x!==v);save();renderDdx();break}
-    case 'btnAddRes':{const txt=$('#t_res').value.trim();if(!txt){toast('Enter or dictate a result first');return}
-      stopMic();c.results.push({id:uid(),ts:Date.now(),type:$('#rType').value,text:txt,interp:$('#rInterp').checked,discuss:$('#rDiscuss').checked,cxrDiscuss:$('#rType').value==='CXR'&&$('#rCxrDiscuss').checked});
-      $('#t_res').value='';$('#rInterp').checked=false;$('#rDiscuss').checked=false;$('#rCxrDiscuss').checked=false;
+    case 'btnAddImaging':
+    case 'btnAddRes':{
+      if(t.id==='btnAddImaging'){
+        const modality=$('#imgModality').value,study=$('#imgStudy').value,finding=$('#imgFinding').value;
+        const details=$('#t_imaging').value.trim();
+        if(!study||!finding){toast('Select an imaging study and finding');return}
+        if((finding==='Other findings'||study.endsWith('(other)'))&&!details){toast('Enter the specific study or findings in Report details');return}
+        stopMic();
+        const text=study+': '+[finding==='Other findings'?'':finding,details].filter(Boolean).join('. ');
+        c.results.push({id:uid(),ts:Date.now(),type:modality==='CXR'?'CXR':'Imaging',text,cxrDiscuss:modality==='CXR'&&$('#imgCxrDiscuss').checked});
+        $('#imgFinding').value='';$('#t_imaging').value='';$('#imgCxrDiscuss').checked=false;
+      }else{
+        const txt=$('#t_res').value.trim();if(!txt){toast('Enter or dictate a result first');return}
+        stopMic();c.results.push({id:uid(),ts:Date.now(),type:$('#rType').value,text:txt,interp:$('#rInterp').checked,discuss:$('#rDiscuss').checked,cxrDiscuss:$('#rType').value==='CXR'&&$('#rCxrDiscuss').checked});
+        $('#t_res').value='';$('#rInterp').checked=false;$('#rDiscuss').checked=false;$('#rCxrDiscuss').checked=false;
+      }
       if(c.status==='awaiting'){c.status='active';const s=document.querySelector('[data-f="status"]');if(s)s.value='active'}
       autoCode(c);
       save();renderEntries();renderTabs();refreshLevel();schedulePreview();toast(c.mdm?'Added. Regenerate the MDM to include it.':'Result added');break}
