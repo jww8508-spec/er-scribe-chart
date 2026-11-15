@@ -257,7 +257,7 @@ function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');cl
 function getPath(o,p){return p.split('.').reduce((a,k)=>a==null?a:a[k],o)}
 function setPath(o,p,v){const ks=p.split('.');let a=o;for(let i=0;i<ks.length-1;i++)a=a[ks[i]];a[ks.at(-1)]=v}
 function newChart(){
-  return {id:uid(),created:Date.now(),room:'',age:'',sex:'',cc:'',status:'active',tab:'hpi',
+  return {id:uid(),created:Date.now(),room:'',age:'',sex:'',guTemplate:'',cc:'',status:'active',tab:'hpi',
     attest:{on:false,type:'saw',resident:'',attending:'',custom:'',additions:'',procOn:true,presence:'entire',ccOn:false,ccMin:0},hpi:'',historian:'',labs:{},labsReviewed:false,pmh:[],pmhNone:false,results:[],course:[],assessment:'',procs:[],
     vitals:{bp:'',hr:'',rr:'',temp:'',spo2:'',pain:''},
     ros:{items:{},sysNeg:{},allNeg:false,reason:'',comment:''},
@@ -441,6 +441,51 @@ const PE={
  'Neurological':[['Mental status','Alert and oriented x4','Altered mental status'],['Cranial nerves','Cranial nerves II–XII grossly intact','Cranial nerve deficit'],['Motor','Strength 5/5 and symmetric','Focal weakness'],['Sensation','Sensation intact','Sensory deficit'],['Speech','Speech normal','Speech abnormal'],['Coordination','Normal finger-to-nose','Dysmetria / ataxia']],
  'Psychiatric':[['Mood','Normal mood','Abnormal mood'],['Behavior','Behavior appropriate','Agitated / abnormal behavior'],['Affect','Normal affect','Abnormal affect (flat / blunted / labile / anxious)'],['Depression','No signs of depression','Depressed'],['Suicidal ideation','Denies suicidal ideation','Endorses suicidal ideation'],['Homicidal ideation','Denies homicidal ideation','Endorses homicidal ideation']]
 };
+const GU_SYSTEM='Genitourinary (GU)';
+const AGE_GROUPS={infant:'Infant',child:'Child',adult:'Adult'};
+function ageYears(value){
+  const match=String(value??'').trim().match(/^(\d+(?:\.\d+)?)\s*(y|yo|y\/?o|yr|yrs|years?|mo|mos|months?|w|wk|wks|weeks?|d|days?)?$/i);
+  if(!match)return null;
+  const unit=(match[2]||'y').toLowerCase();
+  return Number(match[1])/(unit.startsWith('mo')?12:unit.startsWith('w')?52:unit.startsWith('d')?365:1);
+}
+function ageGroup(c){
+  const age=ageYears(c.age);
+  return age===null?'':age<1?'infant':age<18?'child':'adult';
+}
+function guTemplate(c){return c.guTemplate||c.sex||''}
+PE.Head.push(['Anterior fontanelle','Anterior fontanelle soft and flat','Abnormal anterior fontanelle','infant']);
+PE.Constitutional.push(
+  ['Infant interaction','Alert and responsive to caregiver','Decreased responsiveness or inconsolability','infant'],
+  ['Child interaction','Interactive and appropriate for age','Abnormal interaction for age','child']
+);
+PE.Neurological.push(
+  ['Infant tone','Tone appropriate for age','Abnormal tone','infant'],
+  ['Infant movements','Spontaneous symmetric movements','Asymmetric or decreased movements','infant'],
+  ['Gait','Gait appropriate for age','Abnormal gait','child'],
+  ['Gait','Steady gait','Abnormal gait','adult']
+);
+PE[GU_SYSTEM].push(
+  ['Penis / meatus','No visible penile or meatal abnormality','Penile or meatal abnormality','M'],
+  ['Scrotum','No scrotal swelling or discoloration','Scrotal swelling or discoloration','M'],
+  ['Testes','Testes without tenderness','Testicular tenderness','M'],
+  ['Testicular lie','Normal testicular lie','Abnormal testicular lie','M'],
+  ['Vulva / labia','No visible vulvar or labial lesion','Vulvar or labial lesion','F'],
+  ['Vulvar swelling','No vulvar swelling','Vulvar swelling','F'],
+  ['Vaginal bleeding','No vaginal bleeding on exam','Vaginal bleeding on exam','F'],
+  ['Vaginal discharge','No abnormal vaginal discharge','Abnormal vaginal discharge','F']
+);
+function visibleExamRows(c,system){
+  const age=ageGroup(c), anatomy=guTemplate(c);
+  return PE[system].map((finding,index)=>({finding,index})).filter(({finding,index})=>{
+    if(c.pe.f[system+'|'+index])return true;
+    const group=finding[3];
+    if(group==='M'||group==='F')return anatomy===group||anatomy==='both';
+    if(group)return age===group;
+    if(system==='Neurological'&&age==='infant'&&['Mental status','Motor','Speech','Coordination'].includes(finding[0]))return false;
+    return true;
+  });
+}
 function migrateExamDetails(pe){
   if(!pe.headSplit){
     const status=pe.f['Head|0'];
@@ -865,11 +910,43 @@ function autoCode(c){
 const sentence=s=>{s=String(s||'').trim().replace(/\s+/g,' ');if(!s)return'';s=s.charAt(0).toUpperCase()+s.slice(1);return /[.!?]$/.test(s)?s:s+'.'};
 const list=a=>a.length<=1?(a[0]||''):a.length===2?a.join(' and '):a.slice(0,-1).join(', ')+', and '+a.at(-1);
 const lc=s=>/^[A-Z][a-z]/.test(s)?s.charAt(0).toLowerCase()+s.slice(1):s;
-function getDdx(c){
+function demographicDifferential(c){
+  const age=ageYears(c.age),group=ageGroup(c),anatomy=guTemplate(c);
+  const text=[c.cc,c.hpi,rosPosText(c)].join(' ');
+  const abdominal=c.profiles.includes('abd')||/pelvic pain|lower abdominal|\b[lr]lq\b/i.test(text);
+  const vomiting=c.profiles.includes('gi')&&/vomit|emesis/i.test(text);
+  const diagnoses=[];
+  if(group==='infant'&&(abdominal||vomiting))diagnoses.push('Intussusception','Malrotation with volvulus','Incarcerated inguinal hernia','Pyloric stenosis');
+  if(group==='child'&&abdominal)diagnoses.push('Mesenteric adenitis','Intussusception','Meckel diverticulum');
+  if(group==='adult'&&abdominal)diagnoses.push('Diverticulitis');
+  if(group==='infant'&&/fever|febrile/i.test(text))diagnoses.push('Bacteremia','Bacterial meningitis');
+  if((anatomy==='F'||anatomy==='both')&&(abdominal||/vaginal bleeding/i.test(text))){
+    diagnoses.push('Ovarian torsion','Ovarian cyst rupture');
+    if(age!==null&&age>=10)diagnoses.push('Ectopic pregnancy','Pelvic inflammatory disease');
+  }
+  if((anatomy==='M'||anatomy==='both')&&(abdominal||/testic|scrot/i.test(text))){
+    diagnoses.push('Testicular torsion','Epididymitis');
+    if(group==='child')diagnoses.push('Torsion of the appendix testis');
+    if(group==='infant')diagnoses.push('Incarcerated inguinal hernia');
+  }
+  return uniq(diagnoses);
+}
+function differentialOptions(c){
   const profs=c.profiles.map(k=>PROFILES[k]).filter(Boolean);
-  const ddx=uniq(profs.flatMap(p=>p.ddx).concat(c.ddxAdd)).filter(x=>!c.ddxOff.includes(x));
-  const cm=uniq(profs.flatMap(p=>p.cm)).filter(x=>!c.ddxOff.includes(x)).filter(x=>!ddx.includes(x));
-  return{ddx,cm,profs};
+  const group=ageGroup(c),anatomy=guTemplate(c);
+  const pediatric=group==='infant'||group==='child';
+  const adultFocused=new Set(['COPD exacerbation','CHF exacerbation','AAA','Mesenteric ischemia','Acute coronary syndrome','Atypical ACS']);
+  const reproductive=new Set(['Ectopic pregnancy','Ovarian torsion','Pregnancy']);
+  const relevant=name=>!(pediatric&&adultFocused.has(name))&&
+    !(reproductive.has(name)&&!c.profiles.includes('preg')&&(anatomy==='M'||anatomy==='F'||anatomy==='both'||anatomy==='general'||group==='infant'));
+  const suggestions=demographicDifferential(c);
+  const ddx=uniq(profs.flatMap(p=>p.ddx).filter(relevant).concat(c.ddxAdd));
+  const cm=uniq(profs.flatMap(p=>p.cm)).filter(name=>relevant(name)&&!ddx.includes(name));
+  return{profs,ddx,cm,suggestions};
+}
+function getDdx(c){
+  const {profs,ddx,cm}=differentialOptions(c);
+  return{profs,ddx:ddx.filter(x=>!c.ddxOff.includes(x)),cm:cm.filter(x=>!c.ddxOff.includes(x))};
 }
 function activeRules(c){return Object.keys(c.rules).filter(id=>RULES[id]&&c.rules[id].on)}
 function writeMDM(c){
@@ -1099,7 +1176,7 @@ function renderBuilder(){
   if(c.profAuto){const d=detectProfiles(c);if(d.join()!==c.profiles.join()){c.profiles=d;suggestRules(c)}}
   b.innerHTML=`
    <div class="banner">
-     <div class="f"><label>Age</label><input data-f="age" style="width:56px"></div>
+     <div class="f"><label>Age</label><input data-f="age" placeholder="e.g. 6 mo" style="width:76px"></div>
      <div class="f"><label>Sex</label><select data-f="sex"><option value=""></option><option>M</option><option>F</option></select></div>
      <div class="f" style="flex:1;min-width:160px"><label>Chief complaint</label><input data-f="cc" placeholder="Chest pain"></div>
      <div class="f"><label>Status</label><select data-f="status"><option value="active">Active</option><option value="awaiting">Awaiting results</option><option value="dispo">Dispo pending</option><option value="done">Ready to sign</option></select></div>
@@ -1188,11 +1265,15 @@ function rosHTML(c){
 }
 function peHTML(c){
   const f=c.pe.f,v=c.vitals;
-  const sys=Object.keys(PE).map(s=>{const allN=PE[s].every((_,i)=>f[s+'|'+i]==='n');return `<div class="sys"><div class="sh"><b>${esc(s)}</b><label><input type="checkbox" data-pesys="${esc(s)}" ${allN?'checked':''}>nml</label></div>
-     ${PE[s].map((it,i)=>{const k=s+'|'+i,val=f[k],cls=val==='n'?'nrm':val==='a'?'abn':'';return `<div class="ri ${cls}" title="${esc(val==='a'?it[2]:it[1])}"><div class="lab" data-pe="${esc(k)}" data-v="n"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(it[0])}</div><button class="mn" data-pe="${esc(k)}" data-v="a" title="Abnormal">✗</button></div>${val==='a'?`<label class="fld">Abnormal finding details<textarea rows="2" id="pe_abnormal_${esc(k)}" data-f="pe.abnormalDetails.${esc(k)}" aria-label="${esc(s+' — '+it[0]+' details')}"></textarea></label>`:''}`;}).join('')}
+  const sys=Object.keys(PE).map(s=>{const rows=visibleExamRows(c,s);const allN=rows.every(({index})=>f[s+'|'+index]==='n');return `<div class="sys"><div class="sh"><b>${esc(s)}</b><label><input type="checkbox" data-pesys="${esc(s)}" ${allN?'checked':''}>nml</label></div>
+     ${s===GU_SYSTEM?`<label class="fld">GU exam template<select data-f="guTemplate">
+       <option value="">Use chart sex</option><option value="M">Male genital findings</option>
+       <option value="F">Female genital findings</option><option value="both">Show both</option><option value="general">General findings only</option>
+     </select></label>`:''}
+     ${rows.map(({finding:it,index:i})=>{const k=s+'|'+i,val=f[k],cls=val==='n'?'nrm':val==='a'?'abn':'';return `<div class="ri ${cls}" title="${esc(val==='a'?it[2]:it[1])}"><div class="lab" data-pe="${esc(k)}" data-v="n"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(it[0])}</div><button class="mn" data-pe="${esc(k)}" data-v="a" title="Abnormal">✗</button></div>${val==='a'?`<label class="fld">Abnormal finding details<textarea rows="2" id="pe_abnormal_${esc(k)}" data-f="pe.abnormalDetails.${esc(k)}" aria-label="${esc(s+' — '+it[0]+' details')}"></textarea></label>`:''}`;}).join('')}
      <label class="fld" style="margin-top:6px">Additional findings<textarea rows="2" data-f="pe.details.${esc(s)}" aria-label="${esc(s+' — Additional findings')}"></textarea></label></div>`}).join('');
   return `<div class="sec"><h4>Vitals</h4><div class="grid6">${[['bp','BP','128/76'],['hr','HR','88'],['rr','RR','16'],['temp','Temp','98.6 F'],['spo2','SpO2 %','98'],['pain','Pain /10','6']].map(([k,l,p])=>`<div class="fld"><label>${l}</label><input data-f="vitals.${k}" placeholder="${p}"></div>`).join('')}</div></div>
-    <div class="row" style="margin-bottom:10px"><button class="tb" id="peAllNormal">Normal exam (all unmarked items except GU)</button><button class="tb" id="peClear">Clear exam</button><div class="spacer"></div>
+    <div class="row" style="margin-bottom:10px"><button class="tb" id="peAllNormal">Normal exam (all unmarked items except GU)</button><button class="tb" id="peClear">Clear exam</button><span class="hint">Exam template: ${AGE_GROUPS[ageGroup(c)]||'General'}</span><div class="spacer"></div>
     <div class="legendrow"><span><span class="sw" style="background:var(--nrm);border-color:var(--nrmb)"></span>Click name = normal</span><span><span class="sw" style="background:var(--abn);border-color:var(--abnb)"></span>Click ✗ = abnormal</span></div></div>
     <div class="gridsys">${sys}</div>
     <div class="fld" style="margin-top:12px"><label>Exam comments / additional findings</label>${ta('t_pec','pe.comment','','e.g., "2 cm hematoma to the right occiput, no step-off."')}</div>`;
@@ -1264,13 +1345,14 @@ function renderRules(){
 }
 function renderDdx(){
   const c=active(),b=$('#ddxBox');if(!b)return;
-  const {profs}=getDdx(c);
-  const allDdx=uniq(profs.flatMap(p=>p.ddx).concat(c.ddxAdd)),allCm=uniq(profs.flatMap(p=>p.cm)).filter(x=>!allDdx.includes(x));
+  const {ddx:allDdx,cm:allCm,suggestions}=differentialOptions(c);
+  const tailored=suggestions.filter(x=>!allDdx.includes(x)&&!allCm.includes(x));
   const chip=(x,cls)=>`<span class="chip ${cls} ${c.ddxOff.includes(x)?'':'on'}" data-ddx="${esc(x)}">${esc(x)}${c.ddxAdd.includes(x)?'<span class="x" data-ddxdel="'+esc(x)+'">×</span>':''}</span>`;
   b.innerHTML=`<div class="row" style="margin-bottom:6px"><span class="hint" style="width:100px">Presentation</span><div class="chips">${c.profiles.map(k=>`<span class="chip prof on" data-profdel="${k}">${esc(PROFILES[k].name)}<span class="x">×</span></span>`).join('')||'<span class="hint">None detected. Enter the CC/HPI or add one →</span>'}</div>
      <div class="inl"><select id="profAdd"><option value="">+ Presentation</option>${Object.keys(PROFILES).filter(k=>!c.profiles.includes(k)).map(k=>`<option value="${k}">${PROFILES[k].name}</option>`).join('')}</select></div></div>
    <div class="row" style="margin-bottom:6px;align-items:flex-start"><span class="hint" style="width:100px;padding-top:3px">Differential</span><div class="chips" style="flex:1">${allDdx.map(x=>chip(x,'')).join('')||'—'}</div></div>
    <div class="row" style="margin-bottom:6px;align-items:flex-start"><span class="hint" style="width:100px;padding-top:3px">Can't-miss</span><div class="chips" style="flex:1">${allCm.map(x=>chip(x,'cm')).join('')||'—'}</div></div>
+   ${tailored.length?`<div class="row" style="margin-bottom:6px"><span class="hint" style="width:100px">Age / GU suggestions</span><div class="chips">${tailored.map(x=>`<button type="button" class="chip" data-ddxsuggest="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`:''}
    <div class="row"><span style="width:100px"></span><div class="inl"><input id="ddxNew" placeholder="Add a diagnosis" style="width:240px"><button class="tb" id="btnDdxAdd">Add</button></div><span class="hint">Click a diagnosis to include or exclude it.</span></div>`;
 }
 function renderGaps(){const c=active(),b=$('#gapsBox');if(b)b.innerHTML=c.gaps&&c.gaps.length?`<div class="gaps"><b>Documentation gaps to address</b><ul>${c.gaps.map(g=>`<li>${esc(g)}</li>`).join('')}</ul></div>`:''}
@@ -1316,7 +1398,11 @@ document.addEventListener('input',e=>{
   save();schedulePreview();
   if(['age','sex','cc','status'].includes(f))renderPtTabs();
   if(f.startsWith('coding.')||f.startsWith('dispo.')||f==='historian')refreshLevel();
-  if((f==='cc'||f==='hpi')&&c.profAuto){clearTimeout(profT);profT=setTimeout(()=>{const d=detectProfiles(c);if(d.join()!==c.profiles.join()){c.profiles=d;suggestRules(c);save();renderDdx();renderRules()}},700)}
+  if(f==='cc'||f==='hpi'){clearTimeout(profT);profT=setTimeout(()=>{if(c!==active())return;if(c.profAuto){const d=detectProfiles(c);if(d.join()!==c.profiles.join()){c.profiles=d;suggestRules(c);save();renderRules()}}renderDdx()},700)}
+  if(f==='sex'||f==='guTemplate'||f==='age'){
+    renderDdx();
+    if(c.tab==='pe')renderTab();
+  }
   if(f==='ros.reason'){renderTab()}
   if(f==='attest.type'||f==='attest.on'||f==='attest.procOn'||f==='attest.ccOn'){const sc=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=sc;refreshLevel()}
   else if(f.startsWith('attest.')){const pv=$('#attPrev');if(pv)pv.textContent=attestText(c)||'';if(f==='attest.ccMin')refreshLevel()}
@@ -1343,7 +1429,7 @@ document.addEventListener('change',e=>{
   if(t.id==='profAdd'&&t.value){c.profiles.push(t.value);c.profAuto=false;suggestRules(c);save();renderDdx();return}
   if(t.id==='ruleAdd'&&t.value){c.rules[t.value]={on:true,v:[]};save();renderRules();renderTabs();return}
   if(t.dataset.rossys){c.ros.sysNeg[t.dataset.rossys]=t.checked;save();schedulePreview();return}
-  if(t.dataset.pesys){const s=t.dataset.pesys;PE[s].forEach((_,i)=>{const k=s+'|'+i;if(t.checked){if(c.pe.f[k]!=='a')c.pe.f[k]='n'}else if(c.pe.f[k]==='n')delete c.pe.f[k]});save();renderTab();schedulePreview();return}
+  if(t.dataset.pesys){const s=t.dataset.pesys;visibleExamRows(c,s).forEach(({index:i})=>{const k=s+'|'+i;if(t.checked){if(c.pe.f[k]!=='a')c.pe.f[k]='n'}else if(c.pe.f[k]==='n')delete c.pe.f[k]});save();renderTab();schedulePreview();return}
   if(t.matches('select[data-f],input[type=checkbox][data-f],select[data-rv]'))t.dispatchEvent(new Event('input',{bubbles:true}));
 });
 $('#builder').addEventListener('click',e=>{
@@ -1370,6 +1456,11 @@ $('#builder').addEventListener('click',e=>{
   if(ds.lab){const [pn,n]=ds.lab.split('|'),P=c.labs[pn];if(P.f[n]===ds.v){delete P.f[n];delete P.v[n]}else P.f[n]=ds.v;save();const sc=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=sc;schedulePreview();if(ds.v==='a'&&P.f[n]==='a')setTimeout(()=>document.querySelector(`[data-labval="${CSS.escape(ds.lab)}"]`)?.focus(),20);return}
   if(ds.laball){const pn=ds.laball,P=c.labs[pn];LAB_PANELS[pn].forEach(([n])=>{if(P.f[n]!=='a')P.f[n]='n'});save();const sc=$('#tabBody').scrollTop;renderTab();$('#tabBody').scrollTop=sc;schedulePreview();return}
   if(ds.pmhdel){c.pmh=(c.pmh||[]).filter(x=>x!==ds.pmhdel);save();renderTab();schedulePreview();return}
+  if(ds.ddxsuggest){
+    c.ddxAdd=uniq(c.ddxAdd.concat(ds.ddxsuggest));
+    c.ddxOff=c.ddxOff.filter(x=>x!==ds.ddxsuggest);
+    save();renderDdx();return;
+  }
   if(ds.ddx){const x=ds.ddx;c.ddxOff.includes(x)?c.ddxOff=c.ddxOff.filter(y=>y!==x):c.ddxOff.push(x);save();renderDdx();return}
   if(ds.profdel){c.profiles=c.profiles.filter(k=>k!==ds.profdel);c.profAuto=false;Object.keys(c.rules).forEach(id=>{if(!c.rules[id].on&&c.rules[id].sug&&!c.profiles.some(k=>PROFILES[k].rules.includes(id)))delete c.rules[id]});save();renderDdx();return}
   if(ds.ruleon){c.rules[ds.ruleon].on=true;save();renderRules();renderTabs();return}
@@ -1388,7 +1479,7 @@ $('#builder').addEventListener('click',e=>{
   switch(t.id){
     case 'rosAllNeg':c.ros.allNeg=!c.ros.allNeg;save();renderTab();schedulePreview();break;
     case 'rosClear':ask('Clear the entire ROS?',()=>{c.ros={items:{},sysNeg:{},allNeg:false,reason:'',comment:''};save();renderTab();schedulePreview();});break;
-    case 'peAllNormal':Object.keys(PE).filter(s=>s!=='Genitourinary (GU)').forEach(s=>PE[s].forEach((_,i)=>{const k=s+'|'+i;if(!c.pe.f[k])c.pe.f[k]='n'}));save();renderTab();schedulePreview();break;
+    case 'peAllNormal':Object.keys(PE).filter(s=>s!==GU_SYSTEM).forEach(s=>visibleExamRows(c,s).forEach(({index:i})=>{const k=s+'|'+i;if(!c.pe.f[k])c.pe.f[k]='n'}));save();renderTab();schedulePreview();break;
     case 'peClear':ask('Clear the entire exam?',()=>{c.pe.f={};c.pe.details={};c.pe.abnormalDetails={};save();renderTab();schedulePreview();});break;
     case 'btnPmhAdd':{const v=$('#pmhNew').value.trim();if(v)addPmh(c,v);break}
     case 'btnDdxAdd':{const v=$('#ddxNew').value.trim();if(!v)return;if(!c.ddxAdd.includes(v))c.ddxAdd.push(v);c.ddxOff=c.ddxOff.filter(x=>x!==v);save();renderDdx();break}
