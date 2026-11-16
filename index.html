@@ -265,7 +265,7 @@ function newChart(){
     profiles:[],profAuto:true,ddxOff:[],ddxAdd:[],rules:{},
     dispo:{type:'',condition:'',consults:'',followup:'',precautions:'',sdm:false,considered:false,notes:'',impression:''},
     opts:{rules:'auto',rb:'auto',strat:'auto'},
-    mdm:'',mdmGen:'',gaps:[],genAt:null,src:'',
+    mdm:'',mdmGen:'',mdmOwn:'',mdmInclude:'both',gaps:[],genAt:null,src:'',
     coding:{problems:'',tests:0,notes:0,historian:false,interp:false,discuss:false,risk:'',ccMin:0,auto:false,locked:false,why:{},manual:{}}};
 }
 function migrate(c){
@@ -1154,11 +1154,17 @@ function hpiOpener(c){
   let t=(who?(/^[aeiou8]|^11-|^18-/i.test(who)?'An ':'A ')+who+(sex?'':' patient'):'Patient')+(cc?` presenting with ${ccl}`:'')+'.';
   return t}
 function ptLabel(c){const who=[c.age,c.sex].filter(Boolean).join(' ');return (c.cc||'New patient')+(who?` (${who})`:'')}
+function mdmForNote(c){
+  const generated=(c.mdm||'').trim(),own=(c.mdmOwn||'').trim();
+  if(c.mdmInclude==='generated')return generated;
+  if(c.mdmInclude==='own')return own;
+  return [generated,own].filter(Boolean).join('\n\n');
+}
 function noteSections(c){
   const cc=c.cc?`Chief complaint: ${c.cc}`:'';
   const hpi=[hpiOpener(c),c.hpi.trim(),pmhText(c),c.historian.trim()?`History obtained in part from ${c.historian.trim()} (independent historian).`:''].filter(Boolean).join('\n');
   const res=labLines(c).concat(c.results.map(r=>`${r.type}: ${r.text}${resultAnnotation(r)}`)).join('\n');
-  return [['HPI',hpi,'hpi'],['Review of Systems',rosText(c),'ros'],['Physical Exam',peText(c),'pe'],['Results',res,'results'],['MDM',c.mdm.trim(),'mdm'],['Procedures',c.procs.map(p=>p.text.trim()).join('\n\n'),'procs'],['Attending Attestation',attestText(c),'attest']].filter(x=>x[2]!=='attest'||c.attest?.on).concat(c.handoff?.on?[['Shift-change Handoff Attestation',handoffText(c),'attest']]:[]);
+  return [['HPI',hpi,'hpi'],['Review of Systems',rosText(c),'ros'],['Physical Exam',peText(c),'pe'],['Results',res,'results'],['MDM',mdmForNote(c),'mdm'],['Procedures',c.procs.map(p=>p.text.trim()).join('\n\n'),'procs'],['Attending Attestation',attestText(c),'attest']].filter(x=>x[2]!=='attest'||c.attest?.on).concat(c.handoff?.on?[['Shift-change Handoff Attestation',handoffText(c),'attest']]:[]);
 }
 const IMAGING_STUDIES={
   CXR:['Chest x-ray (1 view)','Chest x-ray (2 views)','Chest x-ray (other)'],
@@ -1265,7 +1271,11 @@ function renderTab(){
       <div class="row" style="margin-top:10px;gap:14px"><div class="fld" style="width:240px"><label>Disposition decision (for MDM risk/billing only)</label><select data-f="dispo.type"><option value="">Not decided</option><option value="discharge">Discharge</option><option value="obs">Observation</option><option value="admit">Admit (floor/tele)</option><option value="icu">Admit ICU</option><option value="transfer">Transfer</option><option value="or">To OR</option></select></div><label class="chk" style="margin-top:16px"><input type="checkbox" data-f="dispo.considered" data-type="bool"> Considered admission/observation</label><label class="chk" style="margin-top:16px"><input type="checkbox" data-f="dispo.sdm" data-type="bool"> Shared decision-making</label></div>
       <div style="margin-top:10px">${ta('t_assess','assessment','','Optional: your assessment in your own words, e.g., "Low suspicion for PE given PERC negative; most consistent with musculoskeletal pain."')}</div>
       <div class="row" style="margin:4px 0 10px"><button class="tb primary" id="btnGen">⚡ Generate MDM</button><span class="hint">${c.genAt?`Last generated ${tfmt(c.genAt)}${c.src==='gpt'?' (ChatGPT)':''}`:'Runs in this page with no key and no internet. Generate again when new results arrive.'}</span><div class="spacer"></div><button class="tb" id="btnCopyMdm">Copy MDM</button></div>
-      <textarea class="mdm" data-f="mdm" placeholder="Your MDM will appear here. Edit freely."></textarea><div id="gapsBox"></div>
+      <label class="fld">Generated MDM<textarea class="mdm" data-f="mdm" placeholder="Generate a draft, then edit it here."></textarea></label><div id="gapsBox"></div>
+      <label class="fld" style="margin-top:10px">My MDM<textarea class="mdm" data-f="mdmOwn" placeholder="Write your own MDM here."></textarea></label>
+      <label class="fld" style="max-width:240px;margin-top:8px">Include in note<select data-f="mdmInclude">
+        <option value="both">Both</option><option value="generated">Generated MDM only</option><option value="own">My MDM only</option>
+      </select></label>
       <div class="gptbar"><b style="color:#0b5a46">Optional:</b><span class="hint">Have ChatGPT rewrite this into fully synthesized prose. No key is needed: the prompt is copied and ChatGPT opens.</span><div class="spacer"></div><button class="tb gpt" id="btnGpt">Polish with ChatGPT ↗</button><button class="tb" id="btnGptPaste">Paste reply</button></div>`;break;
   case 'procs':h=`<div class="row"><select id="procType" class="tb" style="padding:5px 8px"><option value="">Choose a procedure template…</option>${Object.keys(PROC_TEMPLATES).map(k=>`<option>${esc(k)}</option>`).join('')}<option value="__blank">Blank procedure note</option></select><button class="tb primary" id="btnAddProc">+ Add procedure</button><span class="hint">Fill in the boxes. Boxes with ▾ suggestions let you pick an option or type your own. Pre-filled defaults can be edited.</span></div><div id="procList" style="margin-top:10px"></div>`;break;
   case 'attest':h=attestHTML(c);break;
@@ -1548,13 +1558,13 @@ $('#builder').addEventListener('click',e=>{
     case 'btnAddProc':{const ty=$('#procType').value;if(!ty){toast('Choose a procedure template first');return}const name=ty==='__blank'?'Procedure':ty,tpl=ty==='__blank'?BLANK_PROC:PROC_TEMPLATES[ty];const p={id:uid(),ts:Date.now(),type:name,tpl,vals:procInit(tpl),extra:''};p.text=procText(p);c.procs.push(p);save();renderProcs();renderTabs();schedulePreview();setTimeout(()=>{const f=[...document.querySelectorAll(`[data-pv="${p.id}"]`)].find(x=>!x.value);if(f){f.focus();f.scrollIntoView({block:'center'})}},30);break}
     case 'btnGen':generate(c);break;
     case 'btnResuggest':c.coding.manual={};autoCode(c);save();renderTab();refreshLevel();toast('All billing elements reset to automatic detection');break;
-    case 'btnCopyMdm':copy(c.mdm,'MDM copied');break;
+    case 'btnCopyMdm':copy(mdmForNote(c),'MDM copied');break;
     case 'btnGpt':sendToGpt(c);break;
     case 'btnGptPaste':openGptModal(c);break;
   }
 });
 $('#btnCopyNote').onclick=()=>{const c=active();if(c)copy(fullNote(c),'Full note copied')};
-$('#btnCopyMdm2').onclick=()=>{const c=active();if(c)copy(c.mdm,'MDM copied')};
+$('#btnCopyMdm2').onclick=()=>{const c=active();if(c)copy(mdmForNote(c),'MDM copied')};
 $('#btnErase').onclick=()=>{const c=active();if(!c)return;
   ask(`End encounter and permanently ERASE the chart for ${ptLabel(c)}?\n\nCopy your note to the EHR first. This cannot be undone.`,()=>{
   stopMic();charts=charts.filter(x=>x.id!==c.id);activeId=charts[0]?.id||null;save(true);renderPtTabs();renderBuilder();renderPreview();toast('Chart erased')},'Erase chart')};
