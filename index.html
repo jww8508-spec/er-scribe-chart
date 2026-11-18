@@ -456,7 +456,9 @@ const PE={
  'Constitutional':[['Appearance','Well-appearing','Ill-appearing'],['Distress','No acute distress','In acute distress'],['Diaphoresis','Not diaphoretic','Diaphoretic']],
  'Head':[['Normocephalic','Normocephalic','Abnormal head shape'],['Atraumatic','Atraumatic','Signs of head trauma']],
  'Eyes':[['Pupils','PERRL','Pupils abnormal'],['EOM','EOMI','Extraocular movements abnormal'],['Conjunctivae','Conjunctivae normal','Conjunctival injection'],['Accommodation','Pupils accommodate normally','Abnormal pupillary accommodation']],
- 'ENT':[['Oropharynx','Oropharynx clear','Oropharyngeal abnormality'],['Mucous membranes','Mucous membranes moist','Mucous membranes dry'],['Ears','TMs normal bilaterally','TM abnormality']],
+ 'Ears':[['Tympanic membranes','TMs normal bilaterally','TM abnormality']],
+ 'Nose':[['Nasal passages','Nasal passages patent','Nasal obstruction'],['Discharge','No nasal discharge','Nasal discharge'],['Bleeding','No active nasal bleeding','Active nasal bleeding']],
+ 'Mouth/Throat':[['Oropharynx','Oropharynx clear','Oropharyngeal abnormality'],['Mucous membranes','Mucous membranes moist','Mucous membranes dry']],
  'Neck':[['Range of motion','Supple, full range of motion','Limited range of motion / meningismus'],['C-spine','No midline cervical tenderness','Midline cervical tenderness']],
  'Cardiovascular':[['Rate','Normal rate','Abnormal rate'],['Rhythm','Regular rhythm','Irregular rhythm'],['Heart sounds','Normal heart sounds, no murmur','Murmur / abnormal heart sounds'],['Pulses','Distal pulses 2+ and symmetric','Diminished or asymmetric pulses']],
  'Pulmonary':[['Effort','Normal respiratory effort','Increased work of breathing'],['Breath sounds','Clear to auscultation bilaterally','Abnormal breath sounds'],['Adventitious','No wheezes, rales, or rhonchi','Wheezes / rales / rhonchi']],
@@ -513,6 +515,19 @@ function visibleExamRows(c,system){
   });
 }
 function migrateExamDetails(pe){
+  for(const [index,destination] of ['Mouth/Throat|0','Mouth/Throat|1','Ears|0'].entries()){
+    const previous='ENT|'+index;
+    for(const [fields,suffix] of [[pe.f,''],[pe.f,'|d'],[pe.abnormalDetails,'']]){
+      const key=previous+suffix;
+      if(fields[key]===undefined)continue;
+      fields[destination+suffix]??=fields[key];
+      delete fields[key];
+    }
+  }
+  if(pe.details.ENT!==undefined){
+    pe.details['Mouth/Throat']=[pe.details['Mouth/Throat'],pe.details.ENT].filter(Boolean).join('\n');
+    delete pe.details.ENT;
+  }
   if(!pe.headSplit){
     const status=pe.f['Head|0'];
     if(status==='n')pe.f['Head|1']='n';
