@@ -1042,11 +1042,10 @@ function writeMDM(c){
     if(imp&&!wor)E.push('On reassessment, symptoms improved with treatment.');
     else if(wor&&!imp)E.push('On reassessment, symptoms did not adequately respond to initial treatment, prompting further management.');
     else if(imp&&wor)E.push('Response to treatment was mixed on serial reassessment.');
-    const narrative=[...c.course.map(r=>({ts:r.ts,t:r.text})),...reeval.map(r=>({ts:r.ts,t:'Reassessment: '+r.text}))].sort((a,b)=>a.ts-b.ts)
-      .map(x=>sentence(x.t));
-    if(narrative.length)E.push('Course:\n'+narrative.join('\n'));
+    const reassessments=[...reeval].sort((a,b)=>a.ts-b.ts).map(r=>'Reassessment: '+sentence(r.text));
     if(meds.length&&!imp&&!wor)gaps.push('Response to treatment is not documented (e.g., "pain improved from 8 to 2 after...").');
-    S.push('ED COURSE AND RESPONSE TO INTERVENTIONS:\n'+[autoC.join('\n'),E.join(' ').replace(/^Course:\n/,'').replace(' Course:\n','\n')].filter(Boolean).join('\n'));
+    const course=[...autoC,E.join(' '),...reassessments].filter(Boolean);
+    if(course.length)S.push('ED COURSE AND RESPONSE TO INTERVENTIONS:\n'+course.join('\n'));
   }
   // 4 Decision rules
   const rs=activeRules(c).map(id=>({id,...evalRule(id,c.rules[id].v)}));
@@ -1098,7 +1097,7 @@ function gptInstructions(){
 ABSOLUTE RULES
 1. Use ONLY facts provided. Never invent vitals, exam findings, results, times, doses, scores, or names. Missing items go in "documentation_gaps", never into the MDM.
 2. H&P dictation and RESULTS are RAW INPUT: summarize and interpret, do not paste.
-3. ED COURSE / INTERVENTIONS DISCUSSION is the clinician thinking out loud. Do NOT copy it verbatim. SYNTHESIZE it into clinical reasoning: interventions and why, response to treatment, re-evaluations, how findings changed the differential and led to the disposition.
+3. ED COURSE / INTERVENTIONS DISCUSSION is the clinician thinking out loud. Omit the raw entries from the note. SYNTHESIZE them into clinical reasoning: interventions and why, response to treatment, re-evaluations, how findings changed the differential and led to the disposition.
 4. Decision-rule results provided by the clinician are authoritative; use them as given. Add other validated rules only if all components are present in the packet.
 5. Physician voice ("I"), chart-ready PLAIN TEXT, no markdown or asterisks. Section headings in ALL CAPS followed by a colon:
 DIFFERENTIAL DIAGNOSIS / DATA REVIEWED AND INTERPRETED / ED COURSE AND RESPONSE TO INTERVENTIONS / CLINICAL DECISION RULES / RISK STRATIFICATION / RISKS, BENEFITS, AND SHARED DECISION MAKING / DISPOSITION AND RATIONALE / CLINICAL IMPRESSION. When the packet explicitly documents independent review or interpretation, use DATA REVIEWED AND INTERPRETED INDEPENDENTLY as the data heading. Follow the OPTIONS line in the packet for whether to include decision rules, risk stratification, and risks/benefits. Omit empty sections.
