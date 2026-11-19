@@ -327,7 +327,7 @@ const LAB_PANELS={
  'Troponin':[['Initial troponin','negative'],['Repeat troponin','negative']],
  'BNP':[['BNP']],
  'Lipase':[['Lipase']],
- 'Urinalysis':[['Leukocyte esterase','negative'],['Nitrite','negative'],['Blood','negative'],['Protein','negative'],['Glucose','negative'],['Ketones','negative'],['WBC','negative'],['Bacteria','negative']],
+ 'Urinalysis':[['Leukocyte esterase','negative'],['Nitrite','negative'],['Blood','negative'],['Protein','negative'],['Glucose','negative'],['Ketones','negative'],['WBC','negative'],['RBC','negative'],['Bacteria','negative']],
  'Lactate':[['Lactate']],
  'D-dimer':[['D-dimer','negative']],
  'Coags (PT/INR, PTT)':[['PT/INR'],['PTT']],
@@ -437,7 +437,9 @@ function labLines(c){
     if(!abn.length&&!nrm.length)t='pending';
     else if(comps.length===1)t=abn.length?(v[comps[0][0]]||'abnormal'):nw(comps[0]);
     else{
-      const parts=abn.map(x=>`${labComponentLabel(x[0])} ${v[x[0]]||'abnormal'}`);
+      const parts=abn.map(x=>pn==='Respiratory viral swab'?
+        `${x[0]} positive${v[x[0]]?' ('+v[x[0]]+')':''}`:
+        `${labComponentLabel(x[0])} ${v[x[0]]||'abnormal'}`);
       if(!abn.length&&!un.length)t=qual?(nrm.every(x=>x[1]==='negative')?'negative':nrm.map(x=>`${labComponentLabel(x[0])} ${x[1]}`).join(', ')):'within normal limits';
       else{
         t=parts.join(', ');
@@ -1342,7 +1344,7 @@ function labsHTML(c){
   const boxes=Object.keys(LAB_PANELS).filter(pn=>L[pn]&&L[pn].on).map(pn=>{const P=L[pn],f=P.f||{},v=P.v||{};
     return `<div class="sys"><div class="sh"><b>${esc(pn)}</b><button class="tb" style="padding:1px 7px;font-size:11.5px" data-laball="${esc(pn)}">All normal</button></div>
     ${LAB_PANELS[pn].map(([n,nw])=>{const k=pn+'|'+n,val=f[n],cls=val==='n'?'nrm':val==='a'?'abn':'';
-      return `<div class="ri ${cls}"><div class="lab" data-lab="${esc(k)}" data-v="n" title="Normal${nw?' ('+nw+')':''}"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(labComponentLabel(n))}</div><button class="mn" data-lab="${esc(k)}" data-v="a" title="Abnormal: enter value">✗</button></div>${val==='a'?`<input class="pedet" data-labval="${esc(k)}" value="${esc(v[n]||'')}" placeholder="Value, e.g., ${esc(n==='WBC'?'14.2':n==='Potassium'?'5.8':n==='Hemoglobin'?'8.9':'result')}" style="width:100%;margin:-1px 0 4px;border:1px solid var(--abnb);border-radius:4px;padding:3px 6px;font-size:12px">`:''}`}).join('')}</div>`}).join('');
+      return `<div class="ri ${cls}"><div class="lab" data-lab="${esc(k)}" data-v="n" title="Normal${nw?' ('+nw+')':''}"><span class="ic">${val==='n'?'✓':val==='a'?'!':'+'}</span>${esc(labComponentLabel(n))}</div><button class="mn" data-lab="${esc(k)}" data-v="a" title="${pn==='Respiratory viral swab'?'Positive':'Abnormal: enter value'}">${pn==='Respiratory viral swab'?'Positive':'✗'}</button></div>${val==='a'?`<input class="pedet" data-labval="${esc(k)}" value="${esc(v[n]||'')}" placeholder="${pn==='Respiratory viral swab'?'Optional positive result details':'Value, e.g., '+esc(n==='WBC'?'14.2':n==='Potassium'?'5.8':n==='Hemoglobin'?'8.9':'result')}" style="width:100%;margin:-1px 0 4px;border:1px solid var(--abnb);border-radius:4px;padding:3px 6px;font-size:12px">`:''}`}).join('')}</div>`}).join('');
   return `<div class="sec"><h4>Common labs</h4>
     <label class="chk" style="margin-bottom:8px"><input type="checkbox" data-f="labsReviewed"> Independently reviewed</label>
     <div class="chips" style="margin-bottom:10px">${chips}</div>
